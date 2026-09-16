@@ -1,0 +1,27 @@
+# Archivos y carpetas generados por Flutter (no deben subirse)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/.cxx/
+android/gradlew
+android/gradlew.bat
+android/**/GeneratedPluginRegistrant.java
+android/key.properties
+
+# Configuracion de Firebase: no se sube al repositorio
+android/app/google-services.json
+
+# Windows
+Thumbs.db
