@@ -45,14 +45,43 @@ class CanchaMatchApp extends StatelessWidget {
 // iniciada (por ejemplo, si el usuario cerro la app sin cerrar sesion) y
 // manda directo a InicioScreen; si no hay nadie logueado, muestra
 // LoginScreen. Es el "portero" que decide por donde entra el usuario.
-class AuthGate extends StatelessWidget {
+//
+// Si hay sesion pero la cuenta nunca verifico su codigo OTP (HU-01), se
+// cierra esa sesion y se muestra el login, donde se le pedira verificar.
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final authService = AuthService();
-    final haySesion = authService.usuarioActual != null;
+  State<AuthGate> createState() => _AuthGateState();
+}
 
-    return haySesion ? const InicioScreen() : const LoginScreen();
+class _AuthGateState extends State<AuthGate> {
+  final _authService = AuthService();
+  late final Future<bool> _sesionValida = _revisarSesion();
+
+  Future<bool> _revisarSesion() async {
+    final usuario = _authService.usuarioActual;
+    if (usuario == null) return false;
+    try {
+      final verificado = await _authService.estaVerificado(usuario.uid);
+      if (!verificado) await _authService.cerrarSesion();
+      return verificado;
+    } catch (_) {
+      // Sin conexion no se puede revisar: se respeta la sesion guardada.
+      return true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _sesionValida,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        return snapshot.data! ? const InicioScreen() : const LoginScreen();
+      },
+    );
   }
 }

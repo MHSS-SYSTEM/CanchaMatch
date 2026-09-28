@@ -122,6 +122,18 @@ class AuthService {
     return esCorrecto;
   }
 
+  // estaVerificado: indica si la cuenta ya confirmo su codigo OTP (HU-01).
+  // Se revisa al iniciar sesion (HU-02) y al abrir la app: una cuenta que
+  // no termino la verificacion no puede entrar.
+  Future<bool> estaVerificado(String uid) async {
+    final doc = await _db.collection('usuarios').doc(uid).get();
+    return doc.exists && doc.data()?['verificado'] == true;
+  }
+
+  // nuevoOtpSimulado: genera otro codigo para quien no alcanzo a
+  // verificar su cuenta cuando se registro.
+  String nuevoOtpSimulado() => _generarOtpSimulado();
+
   // iniciarSesion: login normal con email y contraseña (Firebase Auth ya
   // trae toda la logica de validar credenciales, no hay que programarla).
   Future<UserCredential> iniciarSesion({
