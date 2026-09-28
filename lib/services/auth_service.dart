@@ -6,8 +6,8 @@ import '../models/usuario.dart';
 // AuthService: agrupa todo lo relacionado a crear cuenta, iniciar sesion
 // y el codigo OTP de verificacion (HU-01).
 //
-// IMPORTANTE sobre el OTP: el profesor indico que el codigo OTP debe ser
-// SIMULADO, no un SMS/correo real. Por eso aqui el codigo se genera en el
+// IMPORTANTE sobre el OTP: en esta etapa el codigo OTP es SIMULADO, no
+// se envia por SMS ni correo real. Por eso aqui el codigo se genera en el
 // propio celular (con Random) y se muestra en pantalla al usuario en vez
 // de enviarse de verdad. Es solo para demostrar el flujo de verificacion.
 //

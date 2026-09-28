@@ -5,7 +5,7 @@ import 'login_screen.dart';
 
 // VerificarOtpScreen: segunda mitad de HU-01. Aqui el usuario ingresa el
 // codigo OTP que se le "envio" (en realidad se muestra en pantalla, porque
-// el profesor pidio que el OTP sea SIMULADO, no un SMS/correo real).
+// en esta etapa el OTP es SIMULADO, no un SMS/correo real).
 class VerificarOtpScreen extends StatefulWidget {
   final String uid;
   final String otpSimulado;
@@ -74,7 +74,7 @@ class _VerificarOtpScreenState extends State<VerificarOtpScreen> {
               ),
               const SizedBox(height: 8),
               // Nota: este bloque muestra el OTP directamente en pantalla
-              // porque es SIMULADO (requisito del curso). En una app real
+              // porque es SIMULADO en esta etapa. En una app en produccion
               // este codigo llegaria por SMS o correo y NO se mostraria aqui.
               Container(
                 padding: const EdgeInsets.all(14),
@@ -87,7 +87,7 @@ class _VerificarOtpScreenState extends State<VerificarOtpScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Código simulado (solo para pruebas del curso):',
+                      'Código simulado (solo para pruebas):',
                       style: TextStyle(color: AppColors.textoSecundario, fontSize: 12),
                     ),
                     const SizedBox(height: 6),
