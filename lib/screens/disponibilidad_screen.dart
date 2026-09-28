@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/reserva_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formato.dart';
+import 'confirmar_reserva_screen.dart';
 
 // Estado de un turno en el calendario.
 enum EstadoTurno { libre, ocupado, mio, pasado }
@@ -21,6 +22,9 @@ enum EstadoTurno { libre, ocupado, mio, pasado }
 //  - ya paso (apagado).
 // El estado se calcula a partir de las reservas reales guardadas en
 // Firestore, y se actualiza solo cuando alguien reserva o cancela.
+//
+// Al tocar un turno libre empieza HU-08 (Reservar): el turno se bloquea
+// 10 minutos y se abre la pantalla para confirmar.
 class DisponibilidadScreen extends StatefulWidget {
   final Cancha cancha;
 
@@ -44,6 +48,9 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   // abierta sin que cambie nada en Firestore. Este Timer redibuja la
   // grilla cada 30 segundos para que ese turno vuelva a verse libre.
   Timer? _refresco;
+
+  // true mientras se esta bloqueando un turno (evita doble toque).
+  bool _procesando = false;
 
   @override
   void initState() {
@@ -75,6 +82,54 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
     _fecha = fecha;
     _reservasDelDia = _reservaService.observarReservasDelDia(widget.cancha.id, fechaClave(fecha));
     if (redibujar) setState(() {});
+  }
+
+  // _reservar: HU-08. Bloquea el turno y abre la pantalla de confirmacion.
+  Future<void> _reservar(int hora) async {
+    if (_procesando) return;
+    setState(() => _procesando = true);
+    final mensajero = ScaffoldMessenger.of(context);
+
+    try {
+      final reserva = await _reservaService.bloquearTurno(
+        cancha: widget.cancha,
+        fecha: fechaClave(_fecha),
+        hora: hora,
+      );
+      if (!mounted) return;
+
+      final confirmada = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => ConfirmarReservaScreen(cancha: widget.cancha, reserva: reserva),
+        ),
+      );
+      if (confirmada == true) {
+        mensajero.showSnackBar(
+          const SnackBar(content: Text('¡Reserva registrada! Queda pendiente de pago en el complejo.')),
+        );
+      }
+    } catch (e) {
+      mensajero.showSnackBar(SnackBar(content: Text(ReservaService.mensajeDeError(e))));
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
+
+  void _alTocarTurno(int hora, EstadoTurno estado) {
+    switch (estado) {
+      case EstadoTurno.libre:
+        _reservar(hora);
+      case EstadoTurno.mio:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Este horario ya es tuyo.')),
+        );
+      case EstadoTurno.ocupado:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Este horario ya está reservado. Elige otro.')),
+        );
+      case EstadoTurno.pasado:
+        break;
+    }
   }
 
   List<DateTime> get _fechas {
@@ -135,7 +190,7 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   }
 
   Widget _turno(int hora, EstadoTurno estado) {
-    return Container(
+    final contenido = Container(
       decoration: BoxDecoration(
         color: _colorFondo(estado),
         borderRadius: BorderRadius.circular(12),
@@ -160,6 +215,12 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
           ],
         ),
       ),
+    );
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: estado == EstadoTurno.pasado ? null : () => _alTocarTurno(hora, estado),
+      child: contenido,
     );
   }
 
@@ -246,6 +307,7 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
               ],
             ),
           ),
+          if (_procesando) const LinearProgressIndicator(color: AppColors.verdeLima),
           Expanded(
             child: !cancha.abreEl(_fecha)
                 ? const Center(
