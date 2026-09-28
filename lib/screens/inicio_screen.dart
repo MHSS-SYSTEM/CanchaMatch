@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'perfil_screen.dart';
+import 'buscar_canchas_screen.dart';
 
 // InicioScreen: pantalla que se ve despues de iniciar sesion. Es solo un
 // menu simple con botones hacia HU-05 (perfil) y HU-06 (buscar canchas),
@@ -50,8 +51,17 @@ class InicioScreen extends StatelessWidget {
               subtitulo: 'Ver y editar tus datos',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PerfilScreen()),
-              )
               ),
+            ),
+            const SizedBox(height: 16),
+            _BotonMenu(
+              icono: Icons.sports_soccer,
+              titulo: 'Buscar canchas',
+              subtitulo: 'Ver canchas disponibles cerca de ti',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BuscarCanchasScreen()),
+              ),
+            ),
           ],
         ),
       ),
