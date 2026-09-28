@@ -19,6 +19,7 @@ class ReservaException implements Exception {
 //
 //  - HU-07: ver que turnos de una cancha estan libres u ocupados.
 //  - HU-08: bloquear un turno 10 minutos y confirmarlo como reserva.
+//  - HU-09: ver mis reservas, cancelarlas o moverlas a otro horario.
 class ReservaService {
   static final ReservaService _instancia = ReservaService._interno();
 
@@ -221,5 +222,149 @@ class ReservaService {
       // Si falla (por ejemplo, sin internet), el bloqueo igual vence solo
       // a los 10 minutos, asi que no hace falta avisar al usuario.
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // HU-09: Cancelar o reprogramar reserva
+  // ---------------------------------------------------------------------
+
+  // observarMisReservas: reservas confirmadas del jugador. Se piden solo
+  // las "pendiente_pago" (y no todo el historial) para no descargar
+  // reservas canceladas o viejas. Las que ya empezaron se filtran en la
+  // pantalla, que se refresca sola.
+  Stream<List<Reserva>> observarMisReservas() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return Stream.error(ReservaException('Tu sesión expiró. Vuelve a iniciar sesión.'));
+    }
+    return _reservas
+        .where('usuarioId', isEqualTo: uid)
+        .where('estado', isEqualTo: Reserva.estadoPendientePago)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => Reserva.fromMap(doc.id, doc.data())).toList());
+  }
+
+  // obtenerCancha: datos actuales de la cancha de una reserva (para
+  // mostrar su politica de cancelacion y su calendario al reprogramar).
+  Future<Cancha?> obtenerCancha(String canchaId) async {
+    final doc = await _db.collection('canchas').doc(canchaId).get();
+    if (!doc.exists) return null;
+    return Cancha.fromMap(doc.id, doc.data()!);
+  }
+
+  // dentroDePolitica: la reserva solo se puede cancelar o reprogramar
+  // hasta cierto numero de horas antes del partido. Se usa el limite que
+  // quedo guardado en la reserva al hacerla, asi un cambio posterior de la
+  // politica no afecta a las reservas que ya existian.
+  static bool dentroDePolitica(Reserva reserva) {
+    final limite = reserva.inicio.subtract(Duration(hours: reserva.horasLimiteCancelacion));
+    return DateTime.now().isBefore(limite);
+  }
+
+  // cancelarReserva: marca la reserva como cancelada. Con eso el turno
+  // vuelve a quedar libre para otros jugadores (ver Reserva.ocupaHorario).
+  Future<void> cancelarReserva(Reserva reserva) async {
+    if (!dentroDePolitica(reserva)) {
+      throw ReservaException('Según la política del complejo, esta reserva ya no se puede cancelar.');
+    }
+    final uid = _uid;
+    final ref = _reservas.doc(reserva.id);
+
+    final cancelada = await _db.runTransaction<bool>((transaccion) async {
+      final actual = await transaccion.get(ref);
+      if (!actual.exists) return false;
+      final datos = Reserva.fromMap(actual.id, actual.data()!);
+      if (datos.usuarioId != uid || datos.estado != Reserva.estadoPendientePago) return false;
+
+      transaccion.update(ref, {
+        'estado': Reserva.estadoCancelada,
+        'canceladaEn': FieldValue.serverTimestamp(),
+        'actualizadaEn': FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+
+    if (!cancelada) throw ReservaException('Esta reserva ya no está activa.');
+  }
+
+  // reprogramarReserva: mueve la reserva a otro turno libre de la misma
+  // cancha. En una sola transaccion:
+  //  1. revisa que la cancha siga activa y que el turno nuevo sea valido y
+  //     este libre,
+  //  2. crea la reserva en el turno nuevo (ya confirmada, con el mismo
+  //     medio de pago),
+  //  3. cancela la reserva original, liberando ese horario.
+  // Si cualquier paso falla, no se cambia nada.
+  Future<void> reprogramarReserva({
+    required Reserva original,
+    required Cancha cancha,
+    required String nuevaFecha,
+    required int nuevaHora,
+  }) async {
+    if (!dentroDePolitica(original)) {
+      throw ReservaException('Según la política del complejo, esta reserva ya no se puede reprogramar.');
+    }
+    final uid = _uid;
+    final refCancha = _db.collection('canchas').doc(cancha.id);
+    final refOriginal = _reservas.doc(original.id);
+    final refNueva = _reservas.doc(Reserva.idPara(cancha.id, nuevaFecha, nuevaHora));
+    if (refNueva.id == refOriginal.id) {
+      throw ReservaException('Elige un horario distinto al que ya tienes.');
+    }
+
+    // Firestore exige hacer todas las lecturas antes de las escrituras.
+    final error = await _db.runTransaction<String?>((transaccion) async {
+      final docCancha = await transaccion.get(refCancha);
+      final docOriginal = await transaccion.get(refOriginal);
+      final docNueva = await transaccion.get(refNueva);
+
+      if (!docOriginal.exists) return 'Tu reserva original ya no existe.';
+      final actual = Reserva.fromMap(docOriginal.id, docOriginal.data()!);
+      if (actual.usuarioId != uid || actual.estado != Reserva.estadoPendientePago) {
+        return 'Tu reserva original ya no está activa.';
+      }
+
+      if (!docCancha.exists) return 'Esta cancha ya no existe.';
+      final canchaActual = Cancha.fromMap(docCancha.id, docCancha.data()!);
+      final problema = _problemaConTurno(canchaActual, nuevaFecha, nuevaHora);
+      if (problema != null) return problema;
+
+      if (docNueva.exists) {
+        final existente = Reserva.fromMap(docNueva.id, docNueva.data()!);
+        if (existente.ocupaHorario) {
+          return existente.usuarioId == uid
+              ? 'Ya tienes ese horario apartado o reservado.'
+              : 'Ese horario acaba de ser tomado por otra persona. Elige otro.';
+        }
+      }
+
+      final nueva = Reserva(
+        id: refNueva.id,
+        canchaId: canchaActual.id,
+        canchaNombre: canchaActual.nombre,
+        usuarioId: uid,
+        fecha: nuevaFecha,
+        hora: nuevaHora,
+        estado: Reserva.estadoPendientePago,
+        medioPago: actual.medioPago,
+        precio: canchaActual.precioPorHora,
+        horasLimiteCancelacion: canchaActual.horasLimiteCancelacion,
+      );
+      transaccion.set(refNueva, {
+        ...nueva.toMap(),
+        'reprogramadaDesde': original.id,
+        'creadaEn': FieldValue.serverTimestamp(),
+        'actualizadaEn': FieldValue.serverTimestamp(),
+      });
+      transaccion.update(refOriginal, {
+        'estado': Reserva.estadoCancelada,
+        'reprogramadaA': refNueva.id,
+        'canceladaEn': FieldValue.serverTimestamp(),
+        'actualizadaEn': FieldValue.serverTimestamp(),
+      });
+      return null;
+    });
+
+    if (error != null) throw ReservaException(error);
   }
 }
