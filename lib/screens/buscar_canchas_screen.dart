@@ -1,13 +1,15 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/cancha.dart';
+import '../models/reserva.dart';
 import '../services/firestore_service.dart';
+import '../services/reserva_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formato.dart';
+import 'disponibilidad_screen.dart';
 
 // BuscarCanchasScreen: implementa HU-06 (Buscar canchas disponibles).
 //
@@ -15,8 +17,8 @@ import '../utils/formato.dart';
 // estan activas. El jugador puede combinar tres filtros:
 //  - distrito,
 //  - deporte,
-//  - fecha: solo quedan las canchas que atienden ese dia (y, si es hoy,
-//    que todavia tienen algun turno por delante).
+//  - fecha: solo quedan las canchas que ese dia todavia tienen algun turno
+//    libre (cruzando su horario con las reservas reales de esa fecha).
 //
 // Arriba hay un mapa (OpenStreetMap via flutter_map) con un marcador por
 // cancha y la ubicacion real del usuario (GPS con geolocator); debajo, la
@@ -37,6 +39,11 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
   static const _centroCajamarca = LatLng(-7.1611, -78.5127);
 
   StreamSubscription<List<Cancha>>? _suscripcion;
+
+  // Reservas de la fecha elegida en el filtro (de todas las canchas), para
+  // saber cuales todavia tienen turnos libres ese dia.
+  StreamSubscription<List<Reserva>>? _suscripcionReservas;
+  List<Reserva> _reservasDeLaFecha = [];
   List<Cancha> _canchas = [];
   bool _cargando = true;
   String? _errorCarga;
@@ -61,6 +68,7 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
   @override
   void dispose() {
     _suscripcion?.cancel();
+    _suscripcionReservas?.cancel();
     super.dispose();
   }
 
@@ -173,23 +181,47 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
     return '${diasCortos[fecha.weekday - 1]} ${fecha.day}';
   }
 
-  // _atiendeEnFecha: la cancha abre ese dia de la semana y, si la fecha es
-  // hoy, todavia le queda al menos un turno que no ha empezado.
-  bool _atiendeEnFecha(Cancha cancha, DateTime fecha) {
+  // _tieneTurnoLibre: la cancha abre ese dia de la semana y le queda al
+  // menos un turno que no ha empezado y que nadie tiene reservado ni
+  // apartado (segun las reservas reales de esa fecha).
+  bool _tieneTurnoLibre(Cancha cancha, DateTime fecha) {
     if (!cancha.abreEl(fecha)) return false;
     final ahora = DateTime.now();
-    if (fecha == soloFecha(ahora)) {
-      final primeraHoraLibre = max(cancha.horaApertura, ahora.hour + 1);
-      return primeraHoraLibre < cancha.horaCierre;
-    }
-    return true;
+    final ocupadas = {
+      for (final r in _reservasDeLaFecha)
+        if (r.canchaId == cancha.id && r.ocupaHorario) r.hora,
+    };
+    return cancha.horasDelDia.any((hora) {
+      final inicio = DateTime(fecha.year, fecha.month, fecha.day, hora);
+      return inicio.isAfter(ahora) && !ocupadas.contains(hora);
+    });
+  }
+
+  // _elegirFecha: cambia el filtro de fecha y empieza a escuchar las
+  // reservas de ese dia.
+  void _elegirFecha(DateTime? fecha) {
+    _suscripcionReservas?.cancel();
+    setState(() {
+      _filtroFecha = fecha;
+      _reservasDeLaFecha = [];
+    });
+    if (fecha == null) return;
+    _suscripcionReservas = ReservaService().observarReservasDeFecha(fechaClave(fecha)).listen(
+      (reservas) {
+        if (mounted) setState(() => _reservasDeLaFecha = reservas);
+      },
+      onError: (_) {
+        // Si no se pueden leer las reservas, se filtra solo por el horario
+        // de atencion de cada cancha.
+      },
+    );
   }
 
   List<Cancha> get _canchasFiltradas {
     return _canchas.where((c) {
       if (_filtroDistrito != null && c.distrito != _filtroDistrito) return false;
       if (_filtroDeporte != null && c.tipoDeporte != _filtroDeporte) return false;
-      if (_filtroFecha != null && !_atiendeEnFecha(c, _filtroFecha!)) return false;
+      if (_filtroFecha != null && !_tieneTurnoLibre(c, _filtroFecha!)) return false;
       return true;
     }).toList();
   }
@@ -200,8 +232,8 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
     setState(() {
       _filtroDistrito = null;
       _filtroDeporte = null;
-      _filtroFecha = null;
     });
+    _elegirFecha(null);
   }
 
   // _distanciaTexto: distancia en linea recta (metros/km) entre el usuario
@@ -307,7 +339,7 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
           color: seleccionado ? AppColors.fondoOscuro : AppColors.textoClaro,
           fontWeight: FontWeight.w600,
         ),
-        onSelected: (_) => setState(() => _filtroFecha = fecha),
+        onSelected: (_) => _elegirFecha(fecha),
       ),
     );
   }
@@ -429,7 +461,12 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
                                     trailing: distancia != null
                                         ? Text(distancia, style: const TextStyle(color: AppColors.verdeLima))
                                         : null,
-                                    onTap: () => _mapController.move(LatLng(cancha.latitud, cancha.longitud), 15),
+                                    // Tocar abre el calendario de turnos (HU-07); mantener
+                                    // presionado centra el mapa en la cancha.
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (_) => DisponibilidadScreen(cancha: cancha)),
+                                    ),
+                                    onLongPress: () => _mapController.move(LatLng(cancha.latitud, cancha.longitud), 15),
                                   ),
                                 );
                               },
