@@ -30,6 +30,13 @@ class Usuario {
   // el codigo OTP simulado (ver AuthService). Antes de eso queda en false.
   bool verificado;
 
+  // rol: "jugador" (por defecto) o "admin". El admin es quien gestiona
+  // canchas, horarios y precios (HU-21). Se asigna a mano desde la consola
+  // de Firebase y la app solo lo lee: por eso NO se incluye en toMap(),
+  // asi un jugador no puede cambiarse el rol a si mismo al editar su
+  // perfil (las reglas de Firestore tambien lo impiden).
+  final String rol;
+
   Usuario({
     required this.uid,
     required this.nombre,
@@ -39,6 +46,7 @@ class Usuario {
     this.deporteFavorito,
     this.distrito,
     this.verificado = false,
+    this.rol = 'jugador',
   });
 
   // fromMap: construye un Usuario a partir de los datos que llegan de
@@ -58,6 +66,7 @@ class Usuario {
       deporteFavorito: data['deporteFavorito']?.toString(),
       distrito: data['distrito']?.toString(),
       verificado: data['verificado'] == true,
+      rol: data['rol'] == 'admin' ? 'admin' : 'jugador',
     );
   }
 
@@ -79,4 +88,6 @@ class Usuario {
 
   // Nombre completo, util para mostrar en pantalla (AppBar del perfil, etc).
   String get nombreCompleto => '$nombre $apellido';
+
+  bool get esAdmin => rol == 'admin';
 }

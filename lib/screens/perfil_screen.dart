@@ -3,6 +3,7 @@ import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/constantes.dart';
 
 // PerfilScreen: implementa HU-05 (Edicion de perfil).
 //
@@ -25,9 +26,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
   final _telefonoCtrl = TextEditingController();
   final _distritoCtrl = TextEditingController();
 
-  // Lista fija de deportes para el selector (Dropdown). Se podria traer
-  // desde Firestore, pero para las 3 HU del curso una lista fija alcanza.
-  static const _deportes = ['Futbol', 'Voley', 'Basquet', 'Tenis'];
+  // Lista fija de deportes para el selector (Dropdown). Es la misma que
+  // usa el administrador al crear canchas (ver utils/constantes.dart).
+  static const _deportes = deportes;
   String? _deporteSeleccionado;
 
   Usuario? _usuario;
