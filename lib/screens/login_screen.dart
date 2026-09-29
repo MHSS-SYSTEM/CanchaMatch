@@ -19,6 +19,8 @@ import 'verificar_otp_screen.dart';
 //   bloqueado unos minutos (ver BloqueoLoginService).
 // - Si la cuenta nunca confirmo su codigo OTP al registrarse, se le pide
 //   verificar con un codigo nuevo antes de entrar.
+// - Tambien se puede entrar con una cuenta de Google ("Continuar con
+//   Google"). Ese camino no usa contraseña, asi que no cuenta intentos.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -33,6 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _bloqueoService = BloqueoLoginService();
 
   bool _cargando = false;
+  bool _cargandoGoogle = false;
   String? _errorMensaje;
 
   // Datos del bloqueo activo (si hay uno): el correo bloqueado, los
@@ -174,6 +177,30 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _entrarConGoogle() async {
+    setState(() {
+      _cargandoGoogle = true;
+      _errorMensaje = null;
+    });
+
+    try {
+      final entro = await _authService.iniciarSesionConGoogle();
+      if (!mounted || !entro) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const InicioScreen()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => _errorMensaje = _authService.mensajeError(e));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMensaje = 'No se pudo iniciar sesión con Google. Inténtalo de nuevo.');
+      }
+    } finally {
+      if (mounted) setState(() => _cargandoGoogle = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -245,7 +272,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ElevatedButton(
-                  onPressed: (_cargando || _estaBloqueado) ? null : _iniciarSesion,
+                  onPressed: (_cargando || _cargandoGoogle || _estaBloqueado) ? null : _iniciarSesion,
                   child: _cargando
                       ? const SizedBox(
                           height: 20,
@@ -253,6 +280,29 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Text('Iniciar sesión'),
+                ),
+                const SizedBox(height: 16),
+                const Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('o', style: TextStyle(color: AppColors.textoSecundario)),
+                    ),
+                    Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: (_cargando || _cargandoGoogle) ? null : _entrarConGoogle,
+                  icon: _cargandoGoogle
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.account_circle_outlined),
+                  label: const Text('Continuar con Google'),
                 ),
                 const SizedBox(height: 12),
                 TextButton(

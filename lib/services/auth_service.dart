@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/usuario.dart';
 
 // AuthService: agrupa todo lo relacionado a crear cuenta, iniciar sesion
@@ -27,6 +28,10 @@ class AuthService {
   // que Firebase Auth no guarda por si solo.
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // GoogleSignIn abre la ventana del celular para elegir una cuenta de
+  // Google. Se usa en iniciarSesionConGoogle().
+  final GoogleSignIn _google = GoogleSignIn();
 
   // Devuelve el usuario que tiene la sesion iniciada ahora mismo (o null
   // si nadie inicio sesion). Sirve para saber, por ejemplo, si hay que
@@ -143,9 +148,75 @@ class AuthService {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  // iniciarSesionConGoogle: entra con una cuenta de Google del celular.
+  // Google ya comprobo que el correo le pertenece a esa persona, por eso
+  // estas cuentas no pasan por el codigo OTP: su perfil queda con
+  // verificado=true.
+  //
+  // Retorna false si el usuario cerro la ventana de Google sin elegir
+  // ninguna cuenta (no es un error, simplemente no se inicia sesion).
+  Future<bool> iniciarSesionConGoogle() async {
+    final cuentaGoogle = await _google.signIn();
+    if (cuentaGoogle == null) return false;
+
+    final tokens = await cuentaGoogle.authentication;
+    final credencial = GoogleAuthProvider.credential(
+      accessToken: tokens.accessToken,
+      idToken: tokens.idToken,
+    );
+
+    final resultado = await _auth.signInWithCredential(credencial);
+    final usuario = resultado.user;
+    if (usuario == null) {
+      throw Exception('No se pudo iniciar sesion con Google.');
+    }
+
+    try {
+      await _prepararPerfilGoogle(usuario);
+    } catch (e) {
+      // Sin perfil no se puede usar la app: se cierra la sesion para que
+      // lo intente de nuevo en vez de quedar a medias.
+      await cerrarSesion();
+      rethrow;
+    }
+    return true;
+  }
+
+  // _prepararPerfilGoogle: la primera vez que alguien entra con Google se
+  // crea su documento en "usuarios" con el nombre de su cuenta de Google.
+  // El telefono queda vacio y lo completa despues en su perfil (HU-05).
+  // Si ya tenia un perfil sin verificar (se registro con ese correo pero
+  // no confirmo el codigo), se marca como verificado.
+  Future<void> _prepararPerfilGoogle(User usuario) async {
+    final ref = _db.collection('usuarios').doc(usuario.uid);
+    final doc = await ref.get();
+
+    if (!doc.exists) {
+      final partes = (usuario.displayName ?? '').trim().split(RegExp(r'\s+'));
+      final nuevoUsuario = Usuario(
+        uid: usuario.uid,
+        nombre: partes.first,
+        apellido: partes.skip(1).join(' '),
+        email: usuario.email ?? '',
+        telefono: '',
+        verificado: true,
+      );
+      await ref.set(nuevoUsuario.toMap());
+    } else if (doc.data()?['verificado'] != true) {
+      await ref.update({'verificado': true});
+    }
+  }
+
   // cerrarSesion: cierra la sesion actual (boton "Cerrar sesion" en perfil).
-  Future<void> cerrarSesion() {
-    return _auth.signOut();
+  // Si entro con Google, tambien se cierra alli, asi la proxima vez puede
+  // elegir otra cuenta.
+  Future<void> cerrarSesion() async {
+    try {
+      await _google.signOut();
+    } catch (_) {
+      // Si no habia sesion de Google no hay nada que cerrar.
+    }
+    await _auth.signOut();
   }
 
   // mensajeError: traduce los errores de Firebase Auth a un mensaje en
@@ -167,6 +238,8 @@ class AuthService {
           return 'Correo o contraseña incorrectos.';
         case 'network-request-failed':
           return 'No hay conexión a internet. Revisa tu conexión e inténtalo de nuevo.';
+        case 'account-exists-with-different-credential':
+          return 'Ese correo ya tiene una cuenta. Inicia sesión con tu correo y contraseña.';
         case 'too-many-requests':
           return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
         default:

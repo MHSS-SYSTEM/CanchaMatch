@@ -40,6 +40,8 @@ dependencies:
   firebase_core: ^3.6.0
   # Firebase: registro/inicio de sesion con correo y contrasena
   firebase_auth: ^5.3.1
+  # Inicio de sesion con una cuenta de Google
+  google_sign_in: ^6.2.1
   # Firebase: base de datos para perfil de usuario y canchas
   cloud_firestore: ^5.4.4
 
