@@ -82,6 +82,16 @@ class _PerfilScreenState extends State<PerfilScreen> {
   Future<void> _guardarCambios() async {
     if (_usuario == null) return;
 
+    // Validacion del telefono: en Peru los celulares tienen 9 digitos.
+    // Si no cumple, se muestra el aviso y no se guarda nada en Firestore.
+    // El mensaje empieza con "No se pudo" para que se pinte en rojo (ver
+    // el Text de _mensaje mas abajo).
+    final telefono = _telefonoCtrl.text.trim();
+    if (!RegExp(r'^\d{9}$').hasMatch(telefono)) {
+      setState(() => _mensaje = 'No se pudo guardar: el teléfono debe tener 9 dígitos.');
+      return;
+    }
+
     setState(() {
       _guardando = true;
       _mensaje = null;

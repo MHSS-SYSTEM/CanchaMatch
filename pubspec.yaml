@@ -60,6 +60,9 @@ dependencies:
   # en Stitch. Descarga las fuentes de Google Fonts la primera vez y las
   # deja guardadas en el telefono.
   google_fonts: ^6.2.1
+  # Guarda datos pequeños en el celular (usado en HU-02 para contar los
+  # intentos fallidos de inicio de sesion y el bloqueo temporal).
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:
