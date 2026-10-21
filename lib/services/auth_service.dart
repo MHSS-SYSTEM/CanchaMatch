@@ -148,6 +148,12 @@ class AuthService {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  // enviarCorreoRecuperacion: envía un correo al usuario para que pueda
+  // restablecer su contraseña olvidada.
+  Future<void> enviarCorreoRecuperacion(String email) {
+    return _auth.sendPasswordResetEmail(email: email);
+  }
+
   // iniciarSesionConGoogle: entra con una cuenta de Google del celular.
   // Google ya comprobo que el correo le pertenece a esa persona, por eso
   // estas cuentas no pasan por el codigo OTP: su perfil queda con

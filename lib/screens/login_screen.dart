@@ -36,6 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _cargando = false;
   bool _cargandoGoogle = false;
+  // true mientras se envia el correo de recuperacion (no bloquea el login).
+  bool _enviandoCorreo = false;
   String? _errorMensaje;
 
   // Datos del bloqueo activo (si hay uno): el correo bloqueado, los
@@ -108,6 +110,34 @@ class _LoginScreenState extends State<LoginScreen> {
     final minutos = segundos ~/ 60;
     final resto = (segundos % 60).toString().padLeft(2, '0');
     return '$minutos:$resto';
+  }
+
+  // _recuperarContrasena: Firebase envia un correo con un enlace para que
+  // el usuario cree una contraseña nueva. Funciona aunque el correo este
+  // bloqueado por intentos fallidos.
+  Future<void> _recuperarContrasena() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      setState(() => _errorMensaje = 'Ingresa tu correo para recuperar la contraseña.');
+      return;
+    }
+
+    setState(() {
+      _enviandoCorreo = true;
+      _errorMensaje = null;
+    });
+
+    try {
+      await _authService.enviarCorreoRecuperacion(email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Te enviamos un correo a $email para restablecer tu contraseña.')),
+      );
+    } catch (e) {
+      if (mounted) setState(() => _errorMensaje = _authService.mensajeError(e));
+    } finally {
+      if (mounted) setState(() => _enviandoCorreo = false);
+    }
   }
 
   Future<void> _iniciarSesion() async {
@@ -280,6 +310,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Text('Iniciar sesión'),
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: (_cargando || _cargandoGoogle || _enviandoCorreo) ? null : _recuperarContrasena,
+                    child: _enviandoCorreo
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('¿Olvidaste tu contraseña?'),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const Row(
