@@ -38,10 +38,11 @@ class Usuario {
   final String rol;
 
   // tipoCuenta (HU-04): lo que el usuario eligio al registrarse:
-  // "jugador", "capitan" (capitan de equipo) u "organizador" (organizador
-  // de complejo). Es distinto de "rol": elegir "organizador" NO da permisos
-  // de administrador; la cuenta queda pendiente de verificacion hasta que
-  // CanchaMatch la apruebe poniendo rol = "admin" en la consola de Firebase.
+  //  - "jugador": busca y reserva canchas,
+  //  - "capitan": igual que el jugador y ademas maneja su equipo,
+  //  - "organizador": dueño de complejo; crea y edita SUS canchas.
+  // Es distinto de "rol": rol = "admin" (se pone a mano en Firebase) es el
+  // administrador general de CanchaMatch, que puede ver y editar todas.
   String tipoCuenta;
 
   static const tiposCuenta = ['jugador', 'capitan', 'organizador'];
@@ -107,8 +108,9 @@ class Usuario {
 
   bool get esCapitan => tipoCuenta == 'capitan';
 
-  // Eligio "organizador" pero todavia no fue aprobado como administrador.
-  bool get organizadorPendiente => tipoCuenta == 'organizador' && !esAdmin;
+  // Puede crear y administrar canchas: el dueño de complejo, o el
+  // administrador general.
+  bool get esOrganizador => tipoCuenta == 'organizador' || esAdmin;
 
   // Texto para mostrar en pantalla.
   static String nombreTipo(String tipo) {
@@ -122,9 +124,5 @@ class Usuario {
     }
   }
 
-  String get rolTexto {
-    if (esAdmin) return 'Organizador de complejo (verificado)';
-    if (organizadorPendiente) return 'Organizador de complejo (pendiente de verificación)';
-    return nombreTipo(tipoCuenta);
-  }
+  String get rolTexto => esAdmin ? 'Administrador de CanchaMatch' : nombreTipo(tipoCuenta);
 }

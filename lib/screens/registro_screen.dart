@@ -173,8 +173,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
-                      'Tu cuenta de organizador quedará pendiente hasta que CanchaMatch verifique tu complejo. '
-                      'Mientras tanto podrás usar la app como jugador.',
+                      'Como organizador podrás crear y administrar las canchas de tu complejo.',
                       style: TextStyle(color: AppColors.textoSecundario, fontSize: 12),
                     ),
                   ),

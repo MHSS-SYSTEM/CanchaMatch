@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/cancha.dart';
+import '../services/auth_service.dart';
 import '../services/canchas_admin_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/constantes.dart';
@@ -134,6 +135,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       diasAbiertos: _dias.toList()..sort(),
       politicaCancelacion: _politicaCtrl.text.trim(),
       horasLimiteCancelacion: _horasLimiteCancelacion,
+      // Al crear, la cancha queda a nombre de quien la crea (HU-04); al
+      // editar se mantiene el dueño original.
+      propietarioId: widget.cancha?.propietarioId ?? AuthService().usuarioActual?.uid ?? '',
     );
 
     setState(() => _guardando = true);

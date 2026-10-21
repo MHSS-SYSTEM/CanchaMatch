@@ -17,8 +17,9 @@ import 'mis_reservas_screen.dart';
 // las opciones que le corresponden:
 //  - todos: perfil, buscar canchas y mis reservas,
 //  - capitan de equipo: ademas "Mi equipo",
-//  - organizador pendiente: un aviso de que su cuenta esta en revision,
-//  - organizador verificado (rol admin): "Administrar canchas" (HU-21).
+//  - organizador (dueño de complejo): "Mis canchas", donde crea y edita
+//    sus propias canchas (HU-21),
+//  - administrador general (rol admin): "Administrar canchas", con todas.
 class InicioScreen extends StatefulWidget {
   const InicioScreen({super.key});
 
@@ -31,6 +32,7 @@ class _InicioScreenState extends State<InicioScreen> {
   Usuario? _usuario;
 
   bool get _esAdmin => _usuario?.esAdmin ?? false;
+  bool get _esOrganizador => _usuario?.esOrganizador ?? false;
 
   @override
   void initState() {
@@ -93,21 +95,6 @@ class _InicioScreenState extends State<InicioScreen> {
               style: const TextStyle(color: AppColors.textoSecundario),
             ),
           ],
-          if (_usuario?.organizadorPendiente ?? false) ...[
-            const SizedBox(height: 12),
-            const Card(
-              child: ListTile(
-                contentPadding: EdgeInsets.all(16),
-                leading: Icon(Icons.hourglass_top, color: AppColors.verdeLima, size: 32),
-                title: Text('Cuenta de organizador en revisión', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(
-                  'Cuando CanchaMatch verifique tu complejo podrás administrar tus canchas. '
-                  'Mientras tanto puedes usar la app como jugador.',
-                  style: TextStyle(color: AppColors.textoSecundario),
-                ),
-              ),
-            ),
-          ],
           const SizedBox(height: 20),
           _BotonMenu(
             icono: Icons.person,
@@ -140,13 +127,13 @@ class _InicioScreenState extends State<InicioScreen> {
               ),
             ),
           ],
-          if (_esAdmin) ...[
+          if (_esOrganizador) ...[
             const SizedBox(height: 16),
             _BotonMenu(
               icono: Icons.admin_panel_settings,
-              titulo: 'Administrar canchas',
+              titulo: _esAdmin ? 'Administrar canchas' : 'Mis canchas',
               subtitulo: 'Crear, editar y desactivar canchas, horarios y precios',
-              onTap: () => _ir(const AdminCanchasScreen()),
+              onTap: () => _ir(AdminCanchasScreen(verTodas: _esAdmin)),
             ),
           ],
         ],

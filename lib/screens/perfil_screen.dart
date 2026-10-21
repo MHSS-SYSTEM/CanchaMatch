@@ -193,7 +193,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
                       onChanged: (valor) => setState(() => _deporteSeleccionado = valor),
                     ),
                     const SizedBox(height: 12),
-                    // El administrador ya fue verificado: su rol no se cambia aqui.
+                    // El administrador general se asigna en Firebase: no se cambia aqui.
                     if (_usuario?.esAdmin ?? false)
                       Text(
                         'Rol: ${_usuario!.rolTexto}',
@@ -214,7 +214,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: Text(
-                            'Quedará pendiente hasta que CanchaMatch verifique tu complejo.',
+                            'Podrás crear y administrar las canchas de tu complejo.',
                             style: TextStyle(color: AppColors.textoSecundario, fontSize: 12),
                           ),
                         ),

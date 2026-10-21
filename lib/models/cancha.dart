@@ -43,6 +43,11 @@ class Cancha {
   final String politicaCancelacion;
   final int horasLimiteCancelacion;
 
+  // propietarioId (HU-04): uid del organizador (dueño) que creo la cancha.
+  // Cada organizador ve y edita solo sus propias canchas. Las canchas
+  // creadas antes de HU-04 no lo tienen ('') y solo las ve el administrador.
+  final String propietarioId;
+
   Cancha({
     required this.id,
     required this.nombre,
@@ -58,6 +63,7 @@ class Cancha {
     this.diasAbiertos = const [1, 2, 3, 4, 5, 6, 7],
     this.politicaCancelacion = '',
     this.horasLimiteCancelacion = 2,
+    this.propietarioId = '',
   });
 
   // horasDelDia: lista de las horas en que empieza cada turno.
@@ -120,6 +126,7 @@ class Cancha {
           : const [1, 2, 3, 4, 5, 6, 7],
       politicaCancelacion: (data['politicaCancelacion'] ?? '').toString(),
       horasLimiteCancelacion: _comoInt(data['horasLimiteCancelacion'], 2).clamp(0, 168).toInt(),
+      propietarioId: (data['propietarioId'] ?? '').toString(),
     );
   }
 
@@ -139,6 +146,7 @@ class Cancha {
       'diasAbiertos': diasAbiertos,
       'politicaCancelacion': politicaCancelacion,
       'horasLimiteCancelacion': horasLimiteCancelacion,
+      'propietarioId': propietarioId,
     };
   }
 }
