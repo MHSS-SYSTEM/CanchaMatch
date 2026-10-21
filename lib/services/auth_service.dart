@@ -74,6 +74,7 @@ class AuthService {
     required String email,
     required String telefono,
     required String password,
+    String tipoCuenta = 'jugador',
   }) async {
     // Paso 1: crear la cuenta en Firebase Auth.
     final credential = await _auth.createUserWithEmailAndPassword(
@@ -95,6 +96,7 @@ class AuthService {
       email: email,
       telefono: telefono,
       verificado: false,
+      tipoCuenta: tipoCuenta,
     );
 
     try {

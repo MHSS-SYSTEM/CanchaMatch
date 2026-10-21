@@ -37,6 +37,15 @@ class Usuario {
   // perfil (las reglas de Firestore tambien lo impiden).
   final String rol;
 
+  // tipoCuenta (HU-04): lo que el usuario eligio al registrarse:
+  // "jugador", "capitan" (capitan de equipo) u "organizador" (organizador
+  // de complejo). Es distinto de "rol": elegir "organizador" NO da permisos
+  // de administrador; la cuenta queda pendiente de verificacion hasta que
+  // CanchaMatch la apruebe poniendo rol = "admin" en la consola de Firebase.
+  String tipoCuenta;
+
+  static const tiposCuenta = ['jugador', 'capitan', 'organizador'];
+
   Usuario({
     required this.uid,
     required this.nombre,
@@ -47,6 +56,7 @@ class Usuario {
     this.distrito,
     this.verificado = false,
     this.rol = 'jugador',
+    this.tipoCuenta = 'jugador',
   });
 
   // fromMap: construye un Usuario a partir de los datos que llegan de
@@ -67,6 +77,9 @@ class Usuario {
       distrito: data['distrito']?.toString(),
       verificado: data['verificado'] == true,
       rol: data['rol'] == 'admin' ? 'admin' : 'jugador',
+      // Las cuentas creadas antes de HU-04 no tienen este campo: se toman
+      // como jugador.
+      tipoCuenta: tiposCuenta.contains(data['tipoCuenta']) ? data['tipoCuenta'] as String : 'jugador',
     );
   }
 
@@ -83,6 +96,7 @@ class Usuario {
       'deporteFavorito': deporteFavorito,
       'distrito': distrito,
       'verificado': verificado,
+      'tipoCuenta': tipoCuenta,
     };
   }
 
@@ -90,4 +104,27 @@ class Usuario {
   String get nombreCompleto => '$nombre $apellido';
 
   bool get esAdmin => rol == 'admin';
+
+  bool get esCapitan => tipoCuenta == 'capitan';
+
+  // Eligio "organizador" pero todavia no fue aprobado como administrador.
+  bool get organizadorPendiente => tipoCuenta == 'organizador' && !esAdmin;
+
+  // Texto para mostrar en pantalla.
+  static String nombreTipo(String tipo) {
+    switch (tipo) {
+      case 'capitan':
+        return 'Capitán de equipo';
+      case 'organizador':
+        return 'Organizador de complejo';
+      default:
+        return 'Jugador';
+    }
+  }
+
+  String get rolTexto {
+    if (esAdmin) return 'Organizador de complejo (verificado)';
+    if (organizadorPendiente) return 'Organizador de complejo (pendiente de verificación)';
+    return nombreTipo(tipoCuenta);
+  }
 }

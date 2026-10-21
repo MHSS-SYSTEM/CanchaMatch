@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'verificar_otp_screen.dart';
@@ -9,6 +10,9 @@ import 'verificar_otp_screen.dart';
 // Al enviarlo, crea la cuenta en Firebase y genera un OTP SIMULADO
 // (no se manda SMS/correo real), luego navega a VerificarOtpScreen para
 // que el usuario lo ingrese y complete el registro.
+//
+// HU-04: en el mismo formulario elige su rol (jugador, capitan de equipo u
+// organizador de complejo).
 class RegistroScreen extends StatefulWidget {
   const RegistroScreen({super.key});
 
@@ -34,6 +38,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
   // cuenta en Firebase (evita que el usuario toque el boton dos veces).
   bool _cargando = false;
   String? _errorMensaje;
+
+  // Rol elegido (HU-04). Por defecto, jugador.
+  String _tipoCuenta = 'jugador';
 
   @override
   void dispose() {
@@ -65,6 +72,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
         email: _emailCtrl.text.trim(),
         telefono: _telefonoCtrl.text.trim(),
         password: _passwordCtrl.text,
+        tipoCuenta: _tipoCuenta,
       );
 
       if (!mounted) return;
@@ -150,6 +158,26 @@ class _RegistroScreenState extends State<RegistroScreen> {
                     return null;
                   },
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _tipoCuenta,
+                  decoration: const InputDecoration(labelText: '¿Cómo usarás CanchaMatch?'),
+                  dropdownColor: AppColors.tarjeta,
+                  items: [
+                    for (final tipo in Usuario.tiposCuenta)
+                      DropdownMenuItem(value: tipo, child: Text(Usuario.nombreTipo(tipo))),
+                  ],
+                  onChanged: (valor) => setState(() => _tipoCuenta = valor ?? 'jugador'),
+                ),
+                if (_tipoCuenta == 'organizador')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Tu cuenta de organizador quedará pendiente hasta que CanchaMatch verifique tu complejo. '
+                      'Mientras tanto podrás usar la app como jugador.',
+                      style: TextStyle(color: AppColors.textoSecundario, fontSize: 12),
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 if (_errorMensaje != null)
                   Padding(

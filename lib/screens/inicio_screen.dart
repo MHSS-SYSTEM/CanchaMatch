@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_theme.dart';
@@ -12,8 +13,12 @@ import 'mis_reservas_screen.dart';
 // con botones hacia las pantallas de cada HU, mas la opcion de cerrar
 // sesion.
 //
-// Al abrirse lee el perfil del usuario para saber su rol: si es
-// administrador, aparece ademas la opcion "Administrar canchas" (HU-21).
+// Al abrirse lee el perfil del usuario para saber su rol (HU-04) y mostrar
+// las opciones que le corresponden:
+//  - todos: perfil, buscar canchas y mis reservas,
+//  - capitan de equipo: ademas "Mi equipo",
+//  - organizador pendiente: un aviso de que su cuenta esta en revision,
+//  - organizador verificado (rol admin): "Administrar canchas" (HU-21).
 class InicioScreen extends StatefulWidget {
   const InicioScreen({super.key});
 
@@ -23,7 +28,9 @@ class InicioScreen extends StatefulWidget {
 
 class _InicioScreenState extends State<InicioScreen> {
   final _authService = AuthService();
-  bool _esAdmin = false;
+  Usuario? _usuario;
+
+  bool get _esAdmin => _usuario?.esAdmin ?? false;
 
   @override
   void initState() {
@@ -38,7 +45,7 @@ class _InicioScreenState extends State<InicioScreen> {
     if (uid == null) return;
     try {
       final usuario = await FirestoreService().obtenerPerfil(uid);
-      if (mounted && usuario != null) setState(() => _esAdmin = usuario.esAdmin);
+      if (mounted && usuario != null) setState(() => _usuario = usuario);
     } catch (_) {
       // Sin perfil no se puede saber el rol; se deja el menu de jugador.
     }
@@ -79,6 +86,28 @@ class _InicioScreenState extends State<InicioScreen> {
             '¿Qué quieres hacer?',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textoClaro),
           ),
+          if (_usuario != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Tu rol: ${_usuario!.rolTexto}',
+              style: const TextStyle(color: AppColors.textoSecundario),
+            ),
+          ],
+          if (_usuario?.organizadorPendiente ?? false) ...[
+            const SizedBox(height: 12),
+            const Card(
+              child: ListTile(
+                contentPadding: EdgeInsets.all(16),
+                leading: Icon(Icons.hourglass_top, color: AppColors.verdeLima, size: 32),
+                title: Text('Cuenta de organizador en revisión', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                  'Cuando CanchaMatch verifique tu complejo podrás administrar tus canchas. '
+                  'Mientras tanto puedes usar la app como jugador.',
+                  style: TextStyle(color: AppColors.textoSecundario),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           _BotonMenu(
             icono: Icons.person,
@@ -100,6 +129,17 @@ class _InicioScreenState extends State<InicioScreen> {
             subtitulo: 'Ver, cancelar o reprogramar tus reservas',
             onTap: () => _ir(const MisReservasScreen()),
           ),
+          if (_usuario?.esCapitan ?? false) ...[
+            const SizedBox(height: 16),
+            _BotonMenu(
+              icono: Icons.groups,
+              titulo: 'Mi equipo',
+              subtitulo: 'Arma tu equipo e inscríbelo en campeonatos',
+              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Los equipos y campeonatos llegan en la siguiente entrega.')),
+              ),
+            ),
+          ],
           if (_esAdmin) ...[
             const SizedBox(height: 16),
             _BotonMenu(

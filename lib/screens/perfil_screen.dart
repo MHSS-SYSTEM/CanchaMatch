@@ -31,6 +31,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
   static const _deportes = deportes;
   String? _deporteSeleccionado;
 
+  // Rol elegido (HU-04): jugador, capitan u organizador.
+  String _tipoCuenta = 'jugador';
+
   Usuario? _usuario;
   bool _cargandoDatos = true;
   bool _guardando = false;
@@ -76,6 +79,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
       // selector vacio en vez de asignar un valor que el Dropdown no
       // reconoce, porque eso hace que la pantalla se caiga.
       _deporteSeleccionado = _deportes.contains(usuario.deporteFavorito) ? usuario.deporteFavorito : null;
+      _tipoCuenta = usuario.tipoCuenta;
       _cargandoDatos = false;
     });
   }
@@ -105,7 +109,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
       ..apellido = _apellidoCtrl.text.trim()
       ..telefono = _telefonoCtrl.text.trim()
       ..distrito = _distritoCtrl.text.trim()
-      ..deporteFavorito = _deporteSeleccionado;
+      ..deporteFavorito = _deporteSeleccionado
+      ..tipoCuenta = _tipoCuenta;
 
     try {
       await _firestoreService.actualizarPerfil(_usuario!);
@@ -187,6 +192,33 @@ class _PerfilScreenState extends State<PerfilScreen> {
                           .toList(),
                       onChanged: (valor) => setState(() => _deporteSeleccionado = valor),
                     ),
+                    const SizedBox(height: 12),
+                    // El administrador ya fue verificado: su rol no se cambia aqui.
+                    if (_usuario?.esAdmin ?? false)
+                      Text(
+                        'Rol: ${_usuario!.rolTexto}',
+                        style: const TextStyle(color: AppColors.textoSecundario),
+                      )
+                    else ...[
+                      DropdownButtonFormField<String>(
+                        value: _tipoCuenta,
+                        decoration: const InputDecoration(labelText: 'Rol'),
+                        dropdownColor: AppColors.tarjeta,
+                        items: [
+                          for (final tipo in Usuario.tiposCuenta)
+                            DropdownMenuItem(value: tipo, child: Text(Usuario.nombreTipo(tipo))),
+                        ],
+                        onChanged: (valor) => setState(() => _tipoCuenta = valor ?? 'jugador'),
+                      ),
+                      if (_tipoCuenta == 'organizador')
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Quedará pendiente hasta que CanchaMatch verifique tu complejo.',
+                            style: TextStyle(color: AppColors.textoSecundario, fontSize: 12),
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 20),
                     if (_mensaje != null)
                       Padding(
