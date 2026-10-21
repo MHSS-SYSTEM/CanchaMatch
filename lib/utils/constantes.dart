@@ -5,6 +5,11 @@
 
 const deportes = ['Futbol', 'Voley', 'Basquet', 'Tenis'];
 
+// Cuantos dias hacia adelante (contando hoy) se pueden buscar y reservar.
+// Lo usan la busqueda (HU-06) y el calendario (HU-07), asi ambas pantallas
+// muestran siempre el mismo rango de fechas.
+const diasReservables = 14;
+
 const distritosCajamarca = [
   'Cajamarca',
   'Baños del Inca',

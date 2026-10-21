@@ -8,6 +8,7 @@ import '../models/reserva.dart';
 import '../services/firestore_service.dart';
 import '../services/reserva_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/constantes.dart';
 import '../utils/formato.dart';
 import 'disponibilidad_screen.dart';
 
@@ -167,10 +168,11 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
 
   List<String> get _deportes => (_canchas.map((c) => c.tipoDeporte).where((d) => d.isNotEmpty).toSet().toList()..sort());
 
-  // Proximos 7 dias, empezando por hoy.
+  // Proximos dias, empezando por hoy: el mismo rango que el calendario
+  // (HU-07), para que una fecha elegida aqui siempre exista alla.
   List<DateTime> get _fechas {
     final hoy = soloFecha(DateTime.now());
-    return [for (var i = 0; i < 7; i++) hoy.add(Duration(days: i))];
+    return [for (var i = 0; i < diasReservables; i++) hoy.add(Duration(days: i))];
   }
 
   String _etiquetaFecha(DateTime fecha) {
@@ -464,7 +466,9 @@ class _BuscarCanchasScreenState extends State<BuscarCanchasScreen> {
                                     // Tocar abre el calendario de turnos (HU-07); mantener
                                     // presionado centra el mapa en la cancha.
                                     onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute(builder: (_) => DisponibilidadScreen(cancha: cancha)),
+                                      MaterialPageRoute(
+                                        builder: (_) => DisponibilidadScreen(cancha: cancha, fechaInicial: _filtroFecha),
+                                      ),
                                     ),
                                     onLongPress: () => _mapController.move(LatLng(cancha.latitud, cancha.longitud), 15),
                                   ),

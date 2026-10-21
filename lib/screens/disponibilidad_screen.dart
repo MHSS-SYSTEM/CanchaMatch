@@ -5,6 +5,7 @@ import '../models/reserva.dart';
 import '../services/auth_service.dart';
 import '../services/reserva_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/constantes.dart';
 import '../utils/formato.dart';
 import 'confirmar_reserva_screen.dart';
 
@@ -32,7 +33,12 @@ class DisponibilidadScreen extends StatefulWidget {
   final Cancha cancha;
   final Reserva? reservaAReprogramar;
 
-  const DisponibilidadScreen({super.key, required this.cancha, this.reservaAReprogramar});
+  // fechaInicial: el dia que se muestra al abrir. La busqueda (HU-06) pasa
+  // la fecha que el jugador filtro, asi si eligio "Mañana" el calendario
+  // abre en mañana y no en hoy.
+  final DateTime? fechaInicial;
+
+  const DisponibilidadScreen({super.key, required this.cancha, this.reservaAReprogramar, this.fechaInicial});
 
   @override
   State<DisponibilidadScreen> createState() => _DisponibilidadScreenState();
@@ -42,8 +48,9 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   final _reservaService = ReservaService();
   final _uid = AuthService().usuarioActual?.uid;
 
-  // Cuantos dias hacia adelante se pueden consultar.
-  static const _diasVisibles = 14;
+  // Cuantos dias hacia adelante se pueden consultar (el mismo rango que la
+  // busqueda, ver utils/constantes.dart).
+  static const _diasVisibles = diasReservables;
 
   late DateTime _fecha;
   late Stream<List<Reserva>> _reservasDelDia;
@@ -59,11 +66,14 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   @override
   void initState() {
     super.initState();
-    // Al reprogramar se empieza mostrando el dia de la reserva original.
+    // Al reprogramar se empieza mostrando el dia de la reserva original;
+    // si viene de la busqueda con una fecha filtrada, se abre en esa fecha.
     final original = widget.reservaAReprogramar;
     final hoy = soloFecha(DateTime.now());
-    final fechaInicial = original == null ? hoy : fechaDesdeClave(original.fecha);
-    _cambiarFecha(fechaInicial.isBefore(hoy) ? hoy : fechaInicial, redibujar: false);
+    final ultimoDia = hoy.add(const Duration(days: _diasVisibles - 1));
+    var inicio = original != null ? fechaDesdeClave(original.fecha) : soloFecha(widget.fechaInicial ?? hoy);
+    if (inicio.isBefore(hoy) || inicio.isAfter(ultimoDia)) inicio = hoy;
+    _cambiarFecha(inicio, redibujar: false);
     _refresco = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       // Si la pantalla quedo abierta y ya paso la medianoche, la fecha
