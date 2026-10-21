@@ -6,6 +6,7 @@ import 'login_screen.dart';
 import 'perfil_screen.dart';
 import 'buscar_canchas_screen.dart';
 import 'admin_canchas_screen.dart';
+import 'mis_reservas_screen.dart';
 
 // InicioScreen: pantalla que se ve despues de iniciar sesion. Es un menu
 // con botones hacia las pantallas de cada HU, mas la opcion de cerrar
@@ -91,6 +92,13 @@ class _InicioScreenState extends State<InicioScreen> {
             titulo: 'Buscar canchas',
             subtitulo: 'Ver canchas disponibles cerca de ti',
             onTap: () => _ir(const BuscarCanchasScreen()),
+          ),
+          const SizedBox(height: 16),
+          _BotonMenu(
+            icono: Icons.event_note,
+            titulo: 'Mis reservas',
+            subtitulo: 'Ver, cancelar o reprogramar tus reservas',
+            onTap: () => _ir(const MisReservasScreen()),
           ),
           if (_esAdmin) ...[
             const SizedBox(height: 16),

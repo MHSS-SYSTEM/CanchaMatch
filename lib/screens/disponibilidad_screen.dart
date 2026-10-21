@@ -5,6 +5,7 @@ import '../models/reserva.dart';
 import '../services/auth_service.dart';
 import '../services/reserva_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/constantes.dart';
 import '../utils/formato.dart';
 import 'confirmar_reserva_screen.dart';
 
@@ -25,10 +26,19 @@ enum EstadoTurno { libre, ocupado, mio, pasado }
 //
 // Al tocar un turno libre empieza HU-08 (Reservar): el turno se bloquea
 // 10 minutos y se abre la pantalla para confirmar.
+//
+// La misma pantalla se usa en HU-09 para reprogramar: si llega
+// [reservaAReprogramar], tocar un turno libre mueve esa reserva ahi.
 class DisponibilidadScreen extends StatefulWidget {
   final Cancha cancha;
+  final Reserva? reservaAReprogramar;
 
-  const DisponibilidadScreen({super.key, required this.cancha});
+  // fechaInicial: el dia que se muestra al abrir. La busqueda (HU-06) pasa
+  // la fecha que el jugador filtro, asi si eligio "Mañana" el calendario
+  // abre en mañana y no en hoy.
+  final DateTime? fechaInicial;
+
+  const DisponibilidadScreen({super.key, required this.cancha, this.reservaAReprogramar, this.fechaInicial});
 
   @override
   State<DisponibilidadScreen> createState() => _DisponibilidadScreenState();
@@ -38,8 +48,9 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   final _reservaService = ReservaService();
   final _uid = AuthService().usuarioActual?.uid;
 
-  // Cuantos dias hacia adelante se pueden consultar.
-  static const _diasVisibles = 14;
+  // Cuantos dias hacia adelante se pueden consultar (el mismo rango que la
+  // busqueda, ver utils/constantes.dart).
+  static const _diasVisibles = diasReservables;
 
   late DateTime _fecha;
   late Stream<List<Reserva>> _reservasDelDia;
@@ -55,7 +66,14 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   @override
   void initState() {
     super.initState();
-    _cambiarFecha(soloFecha(DateTime.now()), redibujar: false);
+    // Al reprogramar se empieza mostrando el dia de la reserva original;
+    // si viene de la busqueda con una fecha filtrada, se abre en esa fecha.
+    final original = widget.reservaAReprogramar;
+    final hoy = soloFecha(DateTime.now());
+    final ultimoDia = hoy.add(const Duration(days: _diasVisibles - 1));
+    var inicio = original != null ? fechaDesdeClave(original.fecha) : soloFecha(widget.fechaInicial ?? hoy);
+    if (inicio.isBefore(hoy) || inicio.isAfter(ultimoDia)) inicio = hoy;
+    _cambiarFecha(inicio, redibujar: false);
     _refresco = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       // Si la pantalla quedo abierta y ya paso la medianoche, la fecha
@@ -115,10 +133,58 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
     }
   }
 
+  // _reprogramar: HU-09. Pide confirmacion y mueve la reserva al turno
+  // elegido; al terminar vuelve a "Mis reservas".
+  Future<void> _reprogramar(int hora) async {
+    final original = widget.reservaAReprogramar!;
+    final nuevaFecha = fechaClave(_fecha);
+
+    final seguro = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.tarjeta,
+        title: const Text('¿Mover tu reserva?'),
+        content: Text(
+          'De: ${fechaTexto(fechaDesdeClave(original.fecha))}, ${rangoHora(original.hora)}\n'
+          'A: ${fechaTexto(_fecha)}, ${rangoHora(hora)}\n\n'
+          'Tu horario anterior quedará libre para otros jugadores.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Sí, mover')),
+        ],
+      ),
+    );
+    if (seguro != true) return;
+    if (!mounted) return;
+
+    setState(() => _procesando = true);
+    final navegador = Navigator.of(context);
+    final mensajero = ScaffoldMessenger.of(context);
+    try {
+      await _reservaService.reprogramarReserva(
+        original: original,
+        cancha: widget.cancha,
+        nuevaFecha: nuevaFecha,
+        nuevaHora: hora,
+      );
+      mensajero.showSnackBar(const SnackBar(content: Text('Reserva reprogramada.')));
+      navegador.pop(true);
+    } catch (e) {
+      mensajero.showSnackBar(SnackBar(content: Text(ReservaService.mensajeDeError(e))));
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
+
   void _alTocarTurno(int hora, EstadoTurno estado) {
     switch (estado) {
       case EstadoTurno.libre:
-        _reservar(hora);
+        if (widget.reservaAReprogramar != null) {
+          _reprogramar(hora);
+        } else {
+          _reservar(hora);
+        }
       case EstadoTurno.mio:
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Este horario ya es tuyo.')),
@@ -255,10 +321,21 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
     final cancha = widget.cancha;
 
     return Scaffold(
-      appBar: AppBar(title: Text(cancha.nombre)),
+      appBar: AppBar(title: Text(widget.reservaAReprogramar == null ? cancha.nombre : 'Reprogramar reserva')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (widget.reservaAReprogramar != null)
+            Container(
+              color: AppColors.tarjeta,
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                'Elige el nuevo horario para tu reserva de '
+                '${fechaTexto(fechaDesdeClave(widget.reservaAReprogramar!.fecha))}, '
+                '${rangoHora(widget.reservaAReprogramar!.hora)}.',
+                style: const TextStyle(color: AppColors.verdeLima),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
