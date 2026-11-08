@@ -55,6 +55,10 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   late DateTime _fecha;
   late Stream<List<Reserva>> _reservasDelDia;
 
+  // Horas de este dia ocupadas por partidos de campeonato: se ven como
+  // ocupadas y no se pueden reservar.
+  Set<int> _horasPartido = {};
+
   // Un bloqueo de 10 minutos puede vencer mientras la pantalla esta
   // abierta sin que cambie nada en Firestore. Este Timer redibuja la
   // grilla cada 30 segundos para que ese turno vuelva a verse libre.
@@ -99,7 +103,19 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   void _cambiarFecha(DateTime fecha, {bool redibujar = true}) {
     _fecha = fecha;
     _reservasDelDia = _reservaService.observarReservasDelDia(widget.cancha.id, fechaClave(fecha));
+    _horasPartido = {};
+    _cargarPartidos(fecha);
     if (redibujar) setState(() {});
+  }
+
+  Future<void> _cargarPartidos(DateTime fecha) async {
+    try {
+      final horas = await _reservaService.horasDePartidos(widget.cancha.id, fechaClave(fecha));
+      // Solo si el jugador sigue mirando ese mismo dia.
+      if (mounted && fecha == _fecha) setState(() => _horasPartido = horas);
+    } catch (_) {
+      // Si falla, igual se revisa al intentar reservar (bloquearTurno).
+    }
   }
 
   // _reservar: HU-08. Bloquea el turno y abre la pantalla de confirmacion.
@@ -217,6 +233,7 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
     final ahora = DateTime.now();
     final inicio = DateTime(_fecha.year, _fecha.month, _fecha.day, hora);
     if (!inicio.isAfter(ahora)) return EstadoTurno.pasado;
+    if (_horasPartido.contains(hora)) return EstadoTurno.ocupado;
 
     for (final reserva in reservas) {
       if (reserva.hora == hora && reserva.ocupaHorario) {

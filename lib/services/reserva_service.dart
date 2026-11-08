@@ -83,6 +83,26 @@ class ReservaService {
         .map((snapshot) => snapshot.docs.map((doc) => Reserva.fromMap(doc.id, doc.data())).toList());
   }
 
+  // horasDePartidos: horas de esa cancha y fecha ocupadas por partidos de
+  // campeonatos en curso (HU-13 a HU-17). Esos turnos no se pueden
+  // reservar. Se leen los campeonatos de la cancha y luego sus partidos
+  // de ese dia (asi no hace falta crear indices en Firestore).
+  Future<Set<int>> horasDePartidos(String canchaId, String fecha) async {
+    final campeonatos = await _db.collection('campeonatos').where('canchaId', isEqualTo: canchaId).get();
+    final horas = <int>{};
+    for (final campeonato in campeonatos.docs) {
+      if (campeonato.data()['estado'] != 'en_curso') continue;
+      final partidos = await campeonato.reference.collection('partidos').where('fecha', isEqualTo: fecha).get();
+      for (final partido in partidos.docs) {
+        final datos = partido.data();
+        final hora = datos['hora'];
+        // Los que pasan directo de ronda no ocupan la cancha.
+        if (hora is num && (datos['visitaId'] ?? '').toString().isNotEmpty) horas.add(hora.toInt());
+      }
+    }
+    return horas;
+  }
+
   // ---------------------------------------------------------------------
   // HU-08: Reservar una cancha
   // ---------------------------------------------------------------------
@@ -118,6 +138,10 @@ class ReservaService {
     final uid = _uid;
     final refCancha = _db.collection('canchas').doc(cancha.id);
     final ref = _reservas.doc(Reserva.idPara(cancha.id, fecha, hora));
+
+    if ((await horasDePartidos(cancha.id, fecha)).contains(hora)) {
+      throw ReservaException('En ese horario se juega un partido de campeonato. Elige otro.');
+    }
 
     // La transaccion devuelve la reserva o un mensaje de error; el error se
     // lanza afuera para que llegue tal cual a la pantalla.
@@ -371,6 +395,9 @@ class ReservaService {
     final refNueva = _reservas.doc(Reserva.idPara(cancha.id, nuevaFecha, nuevaHora));
     if (refNueva.id == refOriginal.id) {
       throw ReservaException('Elige un horario distinto al que ya tienes.');
+    }
+    if ((await horasDePartidos(cancha.id, nuevaFecha)).contains(nuevaHora)) {
+      throw ReservaException('En ese horario se juega un partido de campeonato. Elige otro.');
     }
 
     // Firestore exige hacer todas las lecturas antes de las escrituras.
