@@ -10,6 +10,7 @@ import 'admin_canchas_screen.dart';
 import 'mis_reservas_screen.dart';
 import 'historial_pagos_screen.dart';
 import 'validar_pagos_screen.dart';
+import 'campeonatos_screen.dart';
 
 // InicioScreen: pantalla que se ve despues de iniciar sesion. Es un menu
 // con botones hacia las pantallas de cada HU, mas la opcion de cerrar
@@ -17,8 +18,8 @@ import 'validar_pagos_screen.dart';
 //
 // Al abrirse lee el perfil del usuario para saber su rol (HU-04) y mostrar
 // las opciones que le corresponden:
-//  - todos: perfil, buscar canchas, mis reservas e historial de
-//    pagos,
+//  - todos: perfil, buscar canchas, mis reservas, historial de pagos y
+//    campeonatos,
 //  - capitan de equipo: ademas "Mi equipo",
 //  - organizador (dueño de complejo): "Mis canchas", donde crea y edita
 //    sus propias canchas (HU-21), y "Validar pagos" de esas canchas
@@ -127,6 +128,15 @@ class _InicioScreenState extends State<InicioScreen> {
             subtitulo: 'Tus pagos y su estado',
             onTap: () => _ir(const HistorialPagosScreen()),
           ),
+          if (_usuario != null) ...[
+            const SizedBox(height: 16),
+            _BotonMenu(
+              icono: Icons.emoji_events,
+              titulo: 'Campeonatos',
+              subtitulo: _esOrganizador ? 'Crea campeonatos y genera el fixture' : 'Campeonatos y su fixture',
+              onTap: () => _ir(CampeonatosScreen(usuario: _usuario!)),
+            ),
+          ],
           if (_usuario?.esCapitan ?? false) ...[
             const SizedBox(height: 16),
             _BotonMenu(
