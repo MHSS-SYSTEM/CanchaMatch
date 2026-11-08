@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/cancha.dart';
+import '../services/auth_service.dart';
 import '../services/canchas_admin_service.dart';
 import '../theme/app_theme.dart';
 import 'editar_cancha_screen.dart';
@@ -13,7 +14,11 @@ import 'editar_cancha_screen.dart';
 //    politica de cancelacion y ubicacion,
 //  - activarla o desactivarla con el interruptor.
 class AdminCanchasScreen extends StatelessWidget {
-  const AdminCanchasScreen({super.key});
+  // verTodas (HU-04): true para el administrador general (ve todas las
+  // canchas); false para un organizador, que solo ve las que el creo.
+  final bool verTodas;
+
+  const AdminCanchasScreen({super.key, this.verTodas = false});
 
   void _abrirFormulario(BuildContext context, {Cancha? cancha}) {
     Navigator.of(context).push(
@@ -35,7 +40,7 @@ class AdminCanchasScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Administrar canchas')),
+      appBar: AppBar(title: Text(verTodas ? 'Administrar canchas' : 'Mis canchas')),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.verdeLima,
         foregroundColor: AppColors.fondoOscuro,
@@ -44,14 +49,16 @@ class AdminCanchasScreen extends StatelessWidget {
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder<List<Cancha>>(
-        stream: CanchasAdminService().observarTodas(),
+        stream: CanchasAdminService().observarTodas(
+          propietarioId: verTodas ? null : (AuthService().usuarioActual?.uid ?? ''),
+        ),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(20),
                 child: Text(
-                  'No se pudieron cargar las canchas. Revisa que tu cuenta tenga rol de administrador.',
+                  'No se pudieron cargar las canchas. Revisa que tu cuenta sea de organizador.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.error),
                 ),

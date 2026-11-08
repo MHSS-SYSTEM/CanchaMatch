@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_theme.dart';
@@ -7,13 +8,22 @@ import 'perfil_screen.dart';
 import 'buscar_canchas_screen.dart';
 import 'admin_canchas_screen.dart';
 import 'mis_reservas_screen.dart';
+import 'historial_pagos_screen.dart';
+import 'validar_pagos_screen.dart';
 
 // InicioScreen: pantalla que se ve despues de iniciar sesion. Es un menu
 // con botones hacia las pantallas de cada HU, mas la opcion de cerrar
 // sesion.
 //
-// Al abrirse lee el perfil del usuario para saber su rol: si es
-// administrador, aparece ademas la opcion "Administrar canchas" (HU-21).
+// Al abrirse lee el perfil del usuario para saber su rol (HU-04) y mostrar
+// las opciones que le corresponden:
+//  - todos: perfil, buscar canchas, mis reservas e historial de
+//    pagos,
+//  - capitan de equipo: ademas "Mi equipo",
+//  - organizador (dueño de complejo): "Mis canchas", donde crea y edita
+//    sus propias canchas (HU-21), y "Validar pagos" de esas canchas
+//    (HU-12),
+//  - administrador general (rol admin): "Administrar canchas", con todas.
 class InicioScreen extends StatefulWidget {
   const InicioScreen({super.key});
 
@@ -23,7 +33,10 @@ class InicioScreen extends StatefulWidget {
 
 class _InicioScreenState extends State<InicioScreen> {
   final _authService = AuthService();
-  bool _esAdmin = false;
+  Usuario? _usuario;
+
+  bool get _esAdmin => _usuario?.esAdmin ?? false;
+  bool get _esOrganizador => _usuario?.esOrganizador ?? false;
 
   @override
   void initState() {
@@ -38,7 +51,7 @@ class _InicioScreenState extends State<InicioScreen> {
     if (uid == null) return;
     try {
       final usuario = await FirestoreService().obtenerPerfil(uid);
-      if (mounted && usuario != null) setState(() => _esAdmin = usuario.esAdmin);
+      if (mounted && usuario != null) setState(() => _usuario = usuario);
     } catch (_) {
       // Sin perfil no se puede saber el rol; se deja el menu de jugador.
     }
@@ -79,6 +92,13 @@ class _InicioScreenState extends State<InicioScreen> {
             '¿Qué quieres hacer?',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textoClaro),
           ),
+          if (_usuario != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Tu rol: ${_usuario!.rolTexto}',
+              style: const TextStyle(color: AppColors.textoSecundario),
+            ),
+          ],
           const SizedBox(height: 20),
           _BotonMenu(
             icono: Icons.person,
@@ -100,13 +120,38 @@ class _InicioScreenState extends State<InicioScreen> {
             subtitulo: 'Ver, cancelar o reprogramar tus reservas',
             onTap: () => _ir(const MisReservasScreen()),
           ),
-          if (_esAdmin) ...[
+          const SizedBox(height: 16),
+          _BotonMenu(
+            icono: Icons.receipt_long,
+            titulo: 'Historial de pagos',
+            subtitulo: 'Tus pagos y su estado',
+            onTap: () => _ir(const HistorialPagosScreen()),
+          ),
+          if (_usuario?.esCapitan ?? false) ...[
+            const SizedBox(height: 16),
+            _BotonMenu(
+              icono: Icons.groups,
+              titulo: 'Mi equipo',
+              subtitulo: 'Arma tu equipo e inscríbelo en campeonatos',
+              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Los equipos y campeonatos llegan en la siguiente entrega.')),
+              ),
+            ),
+          ],
+          if (_esOrganizador) ...[
             const SizedBox(height: 16),
             _BotonMenu(
               icono: Icons.admin_panel_settings,
-              titulo: 'Administrar canchas',
+              titulo: _esAdmin ? 'Administrar canchas' : 'Mis canchas',
               subtitulo: 'Crear, editar y desactivar canchas, horarios y precios',
-              onTap: () => _ir(const AdminCanchasScreen()),
+              onTap: () => _ir(AdminCanchasScreen(verTodas: _esAdmin)),
+            ),
+            const SizedBox(height: 16),
+            _BotonMenu(
+              icono: Icons.fact_check,
+              titulo: 'Validar pagos',
+              subtitulo: 'Aprobar o rechazar los pagos de tus canchas',
+              onTap: () => _ir(ValidarPagosScreen(esAdmin: _esAdmin)),
             ),
           ],
         ],

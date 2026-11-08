@@ -21,12 +21,23 @@ class CanchasAdminService {
   // observarTodas: todas las canchas, activas y desactivadas, ordenadas
   // por nombre. Es un Stream: si otro admin cambia algo, la lista se
   // actualiza sola.
-  Stream<List<Cancha>> observarTodas() {
-    return _canchas.snapshots().map((snapshot) {
+  // Si se pasa propietarioId, solo trae las canchas de ese organizador
+  // (HU-04: cada dueño ve las suyas); sin el, trae todas (administrador).
+  Stream<List<Cancha>> observarTodas({String? propietarioId}) {
+    final Query<Map<String, dynamic>> consulta = propietarioId == null ? _canchas : _canchas.where('propietarioId', isEqualTo: propietarioId);
+    return consulta.snapshots().map((snapshot) {
       final lista = snapshot.docs.map((doc) => Cancha.fromMap(doc.id, doc.data())).toList();
       lista.sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
       return lista;
     });
+  }
+
+  // tieneCanchas: si el usuario es dueño de al menos una cancha. Se usa
+  // para que un organizador no deje de serlo mientras tenga canchas (sus
+  // jugadores se quedarian sin quien valide sus pagos).
+  Future<bool> tieneCanchas(String uid) async {
+    final consulta = await _canchas.where('propietarioId', isEqualTo: uid).limit(1).get();
+    return consulta.docs.isNotEmpty;
   }
 
   // guardar: si la cancha no tiene id es nueva y se crea; si ya tiene id

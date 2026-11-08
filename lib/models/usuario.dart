@@ -37,6 +37,16 @@ class Usuario {
   // perfil (las reglas de Firestore tambien lo impiden).
   final String rol;
 
+  // tipoCuenta (HU-04): lo que el usuario eligio al registrarse:
+  //  - "jugador": busca y reserva canchas,
+  //  - "capitan": igual que el jugador y ademas maneja su equipo,
+  //  - "organizador": dueño de complejo; crea y edita SUS canchas.
+  // Es distinto de "rol": rol = "admin" (se pone a mano en Firebase) es el
+  // administrador general de CanchaMatch, que puede ver y editar todas.
+  String tipoCuenta;
+
+  static const tiposCuenta = ['jugador', 'capitan', 'organizador'];
+
   Usuario({
     required this.uid,
     required this.nombre,
@@ -47,6 +57,7 @@ class Usuario {
     this.distrito,
     this.verificado = false,
     this.rol = 'jugador',
+    this.tipoCuenta = 'jugador',
   });
 
   // fromMap: construye un Usuario a partir de los datos que llegan de
@@ -67,6 +78,9 @@ class Usuario {
       distrito: data['distrito']?.toString(),
       verificado: data['verificado'] == true,
       rol: data['rol'] == 'admin' ? 'admin' : 'jugador',
+      // Las cuentas creadas antes de HU-04 no tienen este campo: se toman
+      // como jugador.
+      tipoCuenta: tiposCuenta.contains(data['tipoCuenta']) ? data['tipoCuenta'] as String : 'jugador',
     );
   }
 
@@ -83,6 +97,7 @@ class Usuario {
       'deporteFavorito': deporteFavorito,
       'distrito': distrito,
       'verificado': verificado,
+      'tipoCuenta': tipoCuenta,
     };
   }
 
@@ -90,4 +105,24 @@ class Usuario {
   String get nombreCompleto => '$nombre $apellido';
 
   bool get esAdmin => rol == 'admin';
+
+  bool get esCapitan => tipoCuenta == 'capitan';
+
+  // Puede crear y administrar canchas: el dueño de complejo, o el
+  // administrador general.
+  bool get esOrganizador => tipoCuenta == 'organizador' || esAdmin;
+
+  // Texto para mostrar en pantalla.
+  static String nombreTipo(String tipo) {
+    switch (tipo) {
+      case 'capitan':
+        return 'Capitán de equipo';
+      case 'organizador':
+        return 'Organizador de complejo';
+      default:
+        return 'Jugador';
+    }
+  }
+
+  String get rolTexto => esAdmin ? 'Administrador de CanchaMatch' : nombreTipo(tipoCuenta);
 }

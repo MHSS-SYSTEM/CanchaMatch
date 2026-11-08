@@ -10,15 +10,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // Estados posibles:
 //  - "bloqueada": el jugador eligio el turno y tiene 10 minutos para
 //    confirmarlo (HU-08). Si no confirma, el bloqueo vence solo.
-//  - "pendiente_pago": la reserva quedo confirmada; se paga en el
-//    complejo con el medio de pago elegido.
-//  - "cancelada": el jugador la cancelo o la movio a otro horario (HU-09).
+//  - "pendiente_pago": el jugador ya envio su pago (HU-10) y el complejo
+//    todavia no lo revisa. El turno ya queda apartado para el.
+//  - "confirmada": el complejo valido el pago (HU-12).
+//  - "cancelada": el jugador la cancelo o la movio a otro horario (HU-09),
+//    o el complejo rechazo su pago (HU-12).
 //
 // Ojo: un bloqueo vencido sigue guardado con estado "bloqueada". Para
 // saber si un turno esta ocupado hay que usar siempre [ocupaHorario].
 class Reserva {
   static const estadoBloqueada = 'bloqueada';
   static const estadoPendientePago = 'pendiente_pago';
+  static const estadoConfirmada = 'confirmada';
   static const estadoCancelada = 'cancelada';
 
   // Minutos que dura el bloqueo mientras el jugador confirma (HU-08).
@@ -44,6 +47,14 @@ class Reserva {
   // cambia la politica despues, no afecta a las reservas ya hechas.
   final int horasLimiteCancelacion;
 
+  // propietarioId: dueño de la cancha (HU-04). Se copia al reservar para
+  // que el organizador pueda revisar los pagos de sus canchas (HU-12).
+  final String propietarioId;
+
+  // pagoId: documento de la coleccion "pagos" con el pago de esta reserva
+  // (HU-10). Vacio mientras el turno solo esta bloqueado.
+  final String pagoId;
+
   Reserva({
     required this.id,
     required this.canchaId,
@@ -56,7 +67,26 @@ class Reserva {
     this.medioPago,
     this.precio = 0,
     this.horasLimiteCancelacion = 2,
+    this.propietarioId = '',
+    this.pagoId = '',
   });
+
+  // activa: la reserva sigue en pie (pago en revision o ya confirmado).
+  bool get activa => estado == estadoPendientePago || estado == estadoConfirmada;
+
+  // Texto corto del estado para mostrar en pantalla.
+  String get estadoTexto {
+    switch (estado) {
+      case estadoPendientePago:
+        return 'Pago en revisión';
+      case estadoConfirmada:
+        return 'Confirmada';
+      case estadoBloqueada:
+        return 'Apartada';
+      default:
+        return 'Cancelada';
+    }
+  }
 
   // idPara: id del documento de un turno. Ej: "abc123_2026-10-05_18".
   static String idPara(String canchaId, String fecha, int hora) => '${canchaId}_${fecha}_$hora';
@@ -68,7 +98,7 @@ class Reserva {
   // Un bloqueo vencido o una reserva cancelada ya no ocupan el turno, asi
   // el horario se libera solo, sin que nadie tenga que borrarlo.
   bool get ocupaHorario {
-    if (estado == estadoPendientePago) return true;
+    if (activa) return true;
     if (estado == estadoBloqueada) {
       final hasta = bloqueadaHasta;
       return hasta != null && hasta.isAfter(DateTime.now());
@@ -76,16 +106,22 @@ class Reserva {
     return false;
   }
 
-  // inicio: fecha y hora exacta en que empieza el partido. Si la fecha
-  // guardada estuviera mal escrita, devuelve 1970 para que la reserva se
-  // trate como pasada en vez de hacer fallar la pantalla.
+  // inicio: momento exacto en que empieza el partido. Las canchas estan en
+  // Cajamarca, asi que la hora del turno es hora de Peru (UTC-5, sin
+  // horario de verano): se arma en UTC sumando 5 horas y se muestra en la
+  // hora del celular. Las reglas de Firestore hacen el mismo calculo para
+  // comprobar que nadie guarde un inicio falso.
+  // Si la fecha guardada estuviera mal escrita, devuelve 1970 para que la
+  // reserva se trate como pasada en vez de hacer fallar la pantalla.
   DateTime get inicio {
     final partes = fecha.split('-');
     if (partes.length == 3) {
       final anio = int.tryParse(partes[0]);
       final mes = int.tryParse(partes[1]);
       final dia = int.tryParse(partes[2]);
-      if (anio != null && mes != null && dia != null) return DateTime(anio, mes, dia, hora);
+      if (anio != null && mes != null && dia != null) {
+        return DateTime.utc(anio, mes, dia, hora + 5).toLocal();
+      }
     }
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
@@ -106,6 +142,8 @@ class Reserva {
       medioPago: data['medioPago']?.toString(),
       precio: precio is num ? precio.toDouble() : 0,
       horasLimiteCancelacion: limite is num ? limite.toInt() : 2,
+      propietarioId: (data['propietarioId'] ?? '').toString(),
+      pagoId: (data['pagoId'] ?? '').toString(),
     );
   }
 
@@ -139,6 +177,8 @@ class Reserva {
       'medioPago': medioPago,
       'precio': precio,
       'horasLimiteCancelacion': horasLimiteCancelacion,
+      'propietarioId': propietarioId,
+      'pagoId': pagoId,
     };
   }
 }
