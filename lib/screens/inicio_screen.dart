@@ -11,6 +11,7 @@ import 'mis_reservas_screen.dart';
 import 'historial_pagos_screen.dart';
 import 'validar_pagos_screen.dart';
 import 'campeonatos_screen.dart';
+import 'mi_equipo_screen.dart';
 
 // InicioScreen: pantalla que se ve despues de iniciar sesion. Es un menu
 // con botones hacia las pantallas de cada HU, mas la opcion de cerrar
@@ -20,7 +21,7 @@ import 'campeonatos_screen.dart';
 // las opciones que le corresponden:
 //  - todos: perfil, buscar canchas, mis reservas, historial de pagos y
 //    campeonatos,
-//  - capitan de equipo: ademas "Mi equipo",
+//  - capitan de equipo: ademas "Mi equipo" (HU-14),
 //  - organizador (dueño de complejo): "Mis canchas", donde crea y edita
 //    sus propias canchas (HU-21), y "Validar pagos" de esas canchas
 //    (HU-12),
@@ -143,9 +144,7 @@ class _InicioScreenState extends State<InicioScreen> {
               icono: Icons.groups,
               titulo: 'Mi equipo',
               subtitulo: 'Arma tu equipo e inscríbelo en campeonatos',
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Los equipos y campeonatos llegan en la siguiente entrega.')),
-              ),
+              onTap: () => _ir(MiEquipoScreen(capitan: _usuario!)),
             ),
           ],
           if (_esOrganizador) ...[

@@ -9,8 +9,9 @@ import '../utils/formato.dart';
 // DetalleCampeonatoScreen: todo lo que pasa dentro de un campeonato.
 //
 // Tiene dos pestañas, en vivo (Streams de Firestore):
-//  - Equipos: equipos inscritos y cupos libres. El organizador cierra las
-//    inscripciones y el sistema genera el fixture (HU-13).
+//  - Equipos (HU-14): equipos inscritos y cupos libres. El capitan
+//    inscribe a su equipo; el organizador cierra las inscripciones y el
+//    sistema genera el fixture (HU-13).
 //  - Fixture (HU-13): todas las rondas con sus fechas y horas.
 class DetalleCampeonatoScreen extends StatefulWidget {
   final String campeonatoId;
@@ -100,11 +101,12 @@ class _DetalleCampeonatoScreenState extends State<DetalleCampeonatoScreen> {
   }
 
   // ---------------------------------------------------------------------
-  // Pestaña Equipos
+  // Pestaña Equipos (HU-14)
   // ---------------------------------------------------------------------
 
   Widget _pestanaEquipos(Campeonato c) {
     final esOrganizador = _esOrganizadorDe(c);
+    final inscrito = c.equiposIds.contains(widget.usuario.uid);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -152,6 +154,13 @@ class _DetalleCampeonatoScreenState extends State<DetalleCampeonatoScreen> {
             ),
           ),
         const SizedBox(height: 16),
+        if (c.abierto && widget.usuario.esCapitan && !inscrito)
+          ElevatedButton(
+            onPressed: _procesando || c.cuposLibres <= 0
+                ? null
+                : () => _ejecutar(() => _service.inscribirEquipo(c.id), '¡Tu equipo quedó inscrito!'),
+            child: Text(c.cuposLibres <= 0 ? 'Sin cupos' : 'Inscribir mi equipo'),
+          ),
         if (c.abierto && esOrganizador) ...[
           const SizedBox(height: 12),
           OutlinedButton(

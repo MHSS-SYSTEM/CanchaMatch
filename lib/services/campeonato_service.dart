@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/campeonato.dart';
+import '../models/equipo.dart';
 import '../models/partido.dart';
 import '../utils/fixture.dart';
 import '../utils/formato.dart';
@@ -20,6 +21,7 @@ class CampeonatoException implements Exception {
 // partidos.
 //
 //  - HU-13: el organizador crea el campeonato y genera el fixture.
+//  - HU-14: el capitan arma su equipo y lo inscribe.
 class CampeonatoService {
   static final CampeonatoService _instancia = CampeonatoService._interno();
 
@@ -233,5 +235,61 @@ class CampeonatoService {
           'cancha) y entre esas fechas hay $disponibles. Amplía la fecha de fin.';
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------------
+  // HU-14: Inscribir un equipo
+  // ---------------------------------------------------------------------
+
+  // El equipo del capitan (o null si todavia no lo armo).
+  Future<Equipo?> obtenerMiEquipo() async {
+    final doc = await _equipos.doc(_uid).get();
+    return doc.exists ? Equipo.fromMap(doc.id, doc.data()!) : null;
+  }
+
+  // equipoEnCampeonatoActivo: si el equipo del capitan esta inscrito en un
+  // campeonato que todavia no termina.
+  Future<bool> equipoEnCampeonatoActivo() async {
+    final campeonatos = await _campeonatos.where('equiposIds', arrayContains: _uid).get();
+    return campeonatos.docs.any((doc) => doc.data()['estado'] != Campeonato.estadoFinalizado);
+  }
+
+  Future<void> guardarEquipo(Equipo equipo) {
+    return _equipos.doc(_uid).set(equipo.toMap());
+  }
+
+  // inscribirEquipo: en una transaccion revisa que queden cupos, que el
+  // equipo no este inscrito y que tenga los jugadores minimos. Si dos
+  // capitanes se inscriben a la vez por el ultimo cupo, solo entra uno.
+  Future<void> inscribirEquipo(String campeonatoId) async {
+    final uid = _uid;
+    final refCampeonato = _campeonatos.doc(campeonatoId);
+    final refEquipo = _equipos.doc(uid);
+
+    final error = await _db.runTransaction<String?>((transaccion) async {
+      final docCampeonato = await transaccion.get(refCampeonato);
+      final docEquipo = await transaccion.get(refEquipo);
+
+      if (!docCampeonato.exists) return 'El campeonato ya no existe.';
+      if (!docEquipo.exists) return 'Primero arma tu equipo en "Mi equipo".';
+      final campeonato = Campeonato.fromMap(docCampeonato.id, docCampeonato.data()!);
+      final equipo = Equipo.fromMap(docEquipo.id, docEquipo.data()!);
+
+      if (!campeonato.abierto) return 'Las inscripciones ya están cerradas.';
+      if (campeonato.equiposIds.contains(uid)) return 'Tu equipo ya está inscrito.';
+      if (campeonato.cuposLibres <= 0) return 'Ya no quedan cupos en este campeonato.';
+      if (!equipo.completo) return 'Tu equipo necesita al menos ${Equipo.minJugadores} jugadores.';
+      if (equipo.deporte != campeonato.deporte) {
+        return 'Tu equipo es de ${equipo.deporte} y este campeonato es de ${campeonato.deporte}.';
+      }
+
+      transaccion.update(refCampeonato, {
+        'equiposIds': [...campeonato.equiposIds, uid],
+        'equiposNombres.$uid': equipo.nombre,
+      });
+      return null;
+    });
+
+    if (error != null) throw CampeonatoException(error);
   }
 }
