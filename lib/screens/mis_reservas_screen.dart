@@ -9,7 +9,8 @@ import 'disponibilidad_screen.dart';
 
 // MisReservasScreen: implementa HU-09 (Cancelar o reprogramar reserva).
 //
-// Lista las reservas confirmadas del jugador que todavia no se juegan.
+// Lista las reservas activas del jugador (pago en revision o confirmadas)
+// que todavia no se juegan.
 // En cada una puede:
 //  - Cancelar: libera el horario.
 //  - Reprogramar: elige otro horario libre de la misma cancha; el horario
@@ -158,7 +159,7 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'S/ ${reserva.precio.toStringAsFixed(2)} · ${reserva.medioPago ?? 'Sin medio de pago'} · Pendiente de pago',
+              'S/ ${reserva.precio.toStringAsFixed(2)} · ${reserva.medioPago ?? 'Sin medio de pago'} · ${reserva.estadoTexto}',
               style: const TextStyle(color: AppColors.textoSecundario),
             ),
             const SizedBox(height: 12),

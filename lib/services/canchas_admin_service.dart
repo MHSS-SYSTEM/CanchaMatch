@@ -32,6 +32,14 @@ class CanchasAdminService {
     });
   }
 
+  // tieneCanchas: si el usuario es dueño de al menos una cancha. Se usa
+  // para que un organizador no deje de serlo mientras tenga canchas (sus
+  // jugadores se quedarian sin quien valide sus pagos).
+  Future<bool> tieneCanchas(String uid) async {
+    final consulta = await _canchas.where('propietarioId', isEqualTo: uid).limit(1).get();
+    return consulta.docs.isNotEmpty;
+  }
+
   // guardar: si la cancha no tiene id es nueva y se crea; si ya tiene id
   // se actualizan sus datos. Como los jugadores leen la misma coleccion,
   // los cambios se ven de inmediato en la busqueda (HU-06).

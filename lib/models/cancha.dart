@@ -48,6 +48,10 @@ class Cancha {
   // creadas antes de HU-04 no lo tienen ('') y solo las ve el administrador.
   final String propietarioId;
 
+  // numeroPago (HU-10): celular del complejo para Yape o Plin. Se le
+  // muestra al jugador cuando paga. Puede quedar vacio.
+  final String numeroPago;
+
   Cancha({
     required this.id,
     required this.nombre,
@@ -64,6 +68,7 @@ class Cancha {
     this.politicaCancelacion = '',
     this.horasLimiteCancelacion = 2,
     this.propietarioId = '',
+    this.numeroPago = '',
   });
 
   // horasDelDia: lista de las horas en que empieza cada turno.
@@ -127,6 +132,7 @@ class Cancha {
       politicaCancelacion: (data['politicaCancelacion'] ?? '').toString(),
       horasLimiteCancelacion: _comoInt(data['horasLimiteCancelacion'], 2).clamp(0, 168).toInt(),
       propietarioId: (data['propietarioId'] ?? '').toString(),
+      numeroPago: (data['numeroPago'] ?? '').toString(),
     );
   }
 
@@ -147,6 +153,7 @@ class Cancha {
       'politicaCancelacion': politicaCancelacion,
       'horasLimiteCancelacion': horasLimiteCancelacion,
       'propietarioId': propietarioId,
+      'numeroPago': numeroPago,
     };
   }
 }

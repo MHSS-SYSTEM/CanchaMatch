@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/cancha.dart';
@@ -7,6 +8,7 @@ import '../services/canchas_admin_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/constantes.dart';
 import '../utils/formato.dart';
+import '../utils/validaciones.dart';
 
 // EditarCanchaScreen: formulario de HU-21 para crear una cancha nueva
 // (cancha == null) o editar una existente.
@@ -39,6 +41,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   final _direccionCtrl = TextEditingController();
   final _precioCtrl = TextEditingController();
   final _politicaCtrl = TextEditingController();
+  final _numeroPagoCtrl = TextEditingController();
 
   String? _deporte;
   String? _distrito;
@@ -69,6 +72,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     _direccionCtrl.text = c?.direccion ?? '';
     _precioCtrl.text = c == null ? '' : c.precioPorHora.toStringAsFixed(0);
     _politicaCtrl.text = c?.politicaCancelacion ?? '';
+    _numeroPagoCtrl.text = c?.numeroPago ?? '';
 
     if (c != null) {
       if (_deportes.contains(c.tipoDeporte)) {
@@ -99,6 +103,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     _direccionCtrl.dispose();
     _precioCtrl.dispose();
     _politicaCtrl.dispose();
+    _numeroPagoCtrl.dispose();
     super.dispose();
   }
 
@@ -135,6 +140,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       diasAbiertos: _dias.toList()..sort(),
       politicaCancelacion: _politicaCtrl.text.trim(),
       horasLimiteCancelacion: _horasLimiteCancelacion,
+      numeroPago: _numeroPagoCtrl.text.trim(),
       // Al crear, la cancha queda a nombre de quien la crea (HU-04); al
       // editar se mantiene el dueño original.
       propietarioId: widget.cancha?.propietarioId ?? AuthService().usuarioActual?.uid ?? '',
@@ -181,7 +187,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               TextFormField(
                 controller: _direccionCtrl,
                 decoration: const InputDecoration(labelText: 'Dirección'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Escribe la dirección' : null,
+                validator: (v) => (v ?? '').trim().length < 5 ? 'Escribe la dirección completa' : null,
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -219,8 +225,20 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 validator: (v) {
                   final precio = double.tryParse((v ?? '').trim().replaceAll(',', '.'));
                   if (precio == null || precio <= 0) return 'Escribe un precio mayor a 0';
+                  if (precio > 1000) return 'El precio no puede pasar de S/ 1000';
                   return null;
                 },
+              ),
+              const SizedBox(height: 12),
+              // HU-10: numero al que los jugadores pagan con Yape o Plin.
+              TextFormField(
+                controller: _numeroPagoCtrl,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+                decoration: const InputDecoration(labelText: 'Celular para Yape / Plin', hintText: '987654321'),
+                // Es opcional: si se deja vacio, al jugador se le pide pagar
+                // directamente al complejo.
+                validator: (v) => (v ?? '').trim().isEmpty ? null : validarCelular(v),
               ),
 
               _titulo('Horario de atención'),

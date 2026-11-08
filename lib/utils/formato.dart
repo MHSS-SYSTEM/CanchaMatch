@@ -23,9 +23,18 @@ String fechaClave(DateTime fecha) {
 }
 
 // fechaDesdeClave: hace lo contrario ("2026-10-05" -> DateTime).
+// Si el texto estuviera vacio o mal escrito (por ejemplo, un dato editado
+// a mano en Firestore), devuelve el 1 de enero de 1970 en vez de hacer
+// caer la pantalla.
 DateTime fechaDesdeClave(String clave) {
   final partes = clave.split('-');
-  return DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
+  if (partes.length == 3) {
+    final anio = int.tryParse(partes[0]);
+    final mes = int.tryParse(partes[1]);
+    final dia = int.tryParse(partes[2]);
+    if (anio != null && mes != null && dia != null) return DateTime(anio, mes, dia);
+  }
+  return DateTime(1970);
 }
 
 // fechaTexto -> "Lunes 5 oct"

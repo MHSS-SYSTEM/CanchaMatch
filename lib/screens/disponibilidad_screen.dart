@@ -123,7 +123,7 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
       );
       if (confirmada == true) {
         mensajero.showSnackBar(
-          const SnackBar(content: Text('¡Reserva registrada! Queda pendiente de pago en el complejo.')),
+          const SnackBar(content: Text('¡Pago enviado! Tu reserva se confirmará cuando el complejo lo valide.')),
         );
       }
     } catch (e) {
@@ -136,6 +136,7 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
   // _reprogramar: HU-09. Pide confirmacion y mueve la reserva al turno
   // elegido; al terminar vuelve a "Mis reservas".
   Future<void> _reprogramar(int hora) async {
+    if (_procesando) return;
     final original = widget.reservaAReprogramar!;
     final nuevaFecha = fechaClave(_fecha);
 
@@ -186,9 +187,16 @@ class _DisponibilidadScreenState extends State<DisponibilidadScreen> {
           _reservar(hora);
         }
       case EstadoTurno.mio:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Este horario ya es tuyo.')),
-        );
+        // Si es un apartado suyo que quedo sin pagar (por ejemplo, se cerro
+        // la app), se retoma para que pueda pagarlo antes de que venza. Si
+        // ya esta reservado, el servicio le avisa que lo vea en Mis reservas.
+        if (widget.reservaAReprogramar == null) {
+          _reservar(hora);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Este horario ya es tuyo.')),
+          );
+        }
       case EstadoTurno.ocupado:
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Este horario ya está reservado. Elige otro.')),

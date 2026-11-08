@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/cancha.dart';
+import '../models/pago.dart';
 import '../models/reserva.dart';
 import '../utils/formato.dart';
 
@@ -20,6 +21,7 @@ class ReservaException implements Exception {
 //  - HU-07: ver que turnos de una cancha estan libres u ocupados.
 //  - HU-08: bloquear un turno 10 minutos y confirmarlo como reserva.
 //  - HU-09: ver mis reservas, cancelarlas o moverlas a otro horario.
+//  - HU-10: al confirmar, registrar el pago con su comprobante.
 class ReservaService {
   static final ReservaService _instancia = ReservaService._interno();
 
@@ -30,6 +32,7 @@ class ReservaService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _reservas => _db.collection('reservas');
+  CollectionReference<Map<String, dynamic>> get _pagos => _db.collection('pagos');
 
   String get _uid {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -135,6 +138,9 @@ class ReservaService {
           if (existente.usuarioId == uid && existente.estado == Reserva.estadoBloqueada) {
             return (existente, null);
           }
+          if (existente.usuarioId == uid) {
+            return (null, 'Ya tienes este horario reservado. Míralo en "Mis reservas".');
+          }
           return (null, 'Ese horario acaba de ser tomado por otra persona. Elige otro.');
         }
       }
@@ -152,6 +158,7 @@ class ReservaService {
         bloqueadoEn: DateTime.now(),
         precio: canchaActual.precioPorHora,
         horasLimiteCancelacion: canchaActual.horasLimiteCancelacion,
+        propietarioId: canchaActual.propietarioId,
       );
 
       // bloqueadoEn se guarda con la hora del SERVIDOR (serverTimestamp) y
@@ -171,15 +178,23 @@ class ReservaService {
     return reserva;
   }
 
-  // confirmarReserva: convierte el bloqueo en reserva "pendiente de pago"
-  // con el medio de pago que eligio el jugador. No se cobra nada en la
-  // app: el pago se hace en el complejo.
-  Future<void> confirmarReserva(String reservaId, String medioPago) async {
+  // confirmarReserva (HU-08 + HU-10): el jugador envia su pago dentro de
+  // los 10 minutos del bloqueo. En una sola transaccion:
+  //  1. revisa que el bloqueo siga siendo suyo y no haya vencido,
+  //  2. crea el pago "en revision" (y la foto del comprobante, si hay),
+  //  3. pasa la reserva a "pendiente_pago": el turno queda apartado hasta
+  //     que el complejo valide o rechace el pago (HU-12).
+  // El cobro es simulado: no se mueve dinero real.
+  Future<void> confirmarReserva(String reservaId, DatosPago datos) async {
     final uid = _uid;
     final ref = _reservas.doc(reservaId);
+    final refUsuario = _db.collection('usuarios').doc(uid);
+    final refPago = _pagos.doc();
+    final refComprobante = _db.collection('comprobantes').doc(refPago.id);
 
     final confirmada = await _db.runTransaction<bool>((transaccion) async {
       final actual = await transaccion.get(ref);
+      final perfil = await transaccion.get(refUsuario);
       if (!actual.exists) return false;
 
       final reserva = Reserva.fromMap(actual.id, actual.data()!);
@@ -187,9 +202,41 @@ class ReservaService {
         return false;
       }
 
+      final datosPerfil = perfil.data() ?? {};
+      final nombre = '${datosPerfil['nombre'] ?? ''} ${datosPerfil['apellido'] ?? ''}'.trim();
+      final pago = Pago(
+        id: refPago.id,
+        reservaId: reserva.id,
+        usuarioId: uid,
+        usuarioNombre: nombre.isEmpty ? 'Jugador' : nombre,
+        canchaId: reserva.canchaId,
+        canchaNombre: reserva.canchaNombre,
+        propietarioId: reserva.propietarioId,
+        fecha: reserva.fecha,
+        hora: reserva.hora,
+        monto: reserva.precio,
+        medio: datos.medio,
+        numeroOperacion: datos.numeroOperacion,
+        ultimosDigitos: datos.ultimosDigitos,
+        tieneComprobante: datos.comprobanteBase64 != null,
+      );
+
+      transaccion.set(refPago, {
+        ...pago.toMap(),
+        'creadoEn': FieldValue.serverTimestamp(),
+        'actualizadoEn': FieldValue.serverTimestamp(),
+      });
+      if (datos.comprobanteBase64 != null) {
+        transaccion.set(refComprobante, {
+          'usuarioId': uid,
+          'propietarioId': reserva.propietarioId,
+          'imagen': datos.comprobanteBase64,
+        });
+      }
       transaccion.update(ref, {
         'estado': Reserva.estadoPendientePago,
-        'medioPago': medioPago,
+        'medioPago': datos.medio,
+        'pagoId': refPago.id,
         'confirmadaEn': FieldValue.serverTimestamp(),
         'actualizadaEn': FieldValue.serverTimestamp(),
       });
@@ -228,10 +275,10 @@ class ReservaService {
   // HU-09: Cancelar o reprogramar reserva
   // ---------------------------------------------------------------------
 
-  // observarMisReservas: reservas confirmadas del jugador. Se piden solo
-  // las "pendiente_pago" (y no todo el historial) para no descargar
-  // reservas canceladas o viejas. Las que ya empezaron se filtran en la
-  // pantalla, que se refresca sola.
+  // observarMisReservas: reservas activas del jugador (pago en revision o
+  // confirmadas). No se piden las canceladas para no descargar todo el
+  // historial. Las que ya empezaron se filtran en la pantalla, que se
+  // refresca sola.
   Stream<List<Reserva>> observarMisReservas() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -239,7 +286,7 @@ class ReservaService {
     }
     return _reservas
         .where('usuarioId', isEqualTo: uid)
-        .where('estado', isEqualTo: Reserva.estadoPendientePago)
+        .where('estado', whereIn: [Reserva.estadoPendientePago, Reserva.estadoConfirmada])
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => Reserva.fromMap(doc.id, doc.data())).toList());
   }
@@ -263,6 +310,8 @@ class ReservaService {
 
   // cancelarReserva: marca la reserva como cancelada. Con eso el turno
   // vuelve a quedar libre para otros jugadores (ver Reserva.ocupaHorario).
+  // Si ya habia enviado su pago, ese pago queda "anulado" en su historial
+  // (la devolucion del dinero se coordina con el complejo).
   Future<void> cancelarReserva(Reserva reserva) async {
     if (!dentroDePolitica(reserva)) {
       throw ReservaException('Según la política del complejo, esta reserva ya no se puede cancelar.');
@@ -274,8 +323,20 @@ class ReservaService {
       final actual = await transaccion.get(ref);
       if (!actual.exists) return false;
       final datos = Reserva.fromMap(actual.id, actual.data()!);
-      if (datos.usuarioId != uid || datos.estado != Reserva.estadoPendientePago) return false;
+      if (datos.usuarioId != uid || !datos.activa) return false;
 
+      final refPago = datos.pagoId.isEmpty ? null : _pagos.doc(datos.pagoId);
+      final docPago = refPago == null ? null : await transaccion.get(refPago);
+
+      if (docPago != null && docPago.exists) {
+        final estadoPago = docPago.data()?['estado'];
+        if (estadoPago == Pago.estadoEnRevision || estadoPago == Pago.estadoAprobado) {
+          transaccion.update(refPago!, {
+            'estado': Pago.estadoAnulado,
+            'actualizadoEn': FieldValue.serverTimestamp(),
+          });
+        }
+      }
       transaccion.update(ref, {
         'estado': Reserva.estadoCancelada,
         'canceladaEn': FieldValue.serverTimestamp(),
@@ -291,8 +352,8 @@ class ReservaService {
   // cancha. En una sola transaccion:
   //  1. revisa que la cancha siga activa y que el turno nuevo sea valido y
   //     este libre,
-  //  2. crea la reserva en el turno nuevo (ya confirmada, con el mismo
-  //     medio de pago),
+  //  2. crea la reserva en el turno nuevo, con el mismo estado y el mismo
+  //     pago (el pago pasa a apuntar a la reserva nueva),
   //  3. cancela la reserva original, liberando ese horario.
   // Si cualquier paso falla, no se cambia nada.
   Future<void> reprogramarReserva({
@@ -320,9 +381,11 @@ class ReservaService {
 
       if (!docOriginal.exists) return 'Tu reserva original ya no existe.';
       final actual = Reserva.fromMap(docOriginal.id, docOriginal.data()!);
-      if (actual.usuarioId != uid || actual.estado != Reserva.estadoPendientePago) {
+      if (actual.usuarioId != uid || !actual.activa) {
         return 'Tu reserva original ya no está activa.';
       }
+      final refPago = actual.pagoId.isEmpty ? null : _pagos.doc(actual.pagoId);
+      final docPago = refPago == null ? null : await transaccion.get(refPago);
 
       if (!docCancha.exists) return 'Esta cancha ya no existe.';
       final canchaActual = Cancha.fromMap(docCancha.id, docCancha.data()!);
@@ -345,10 +408,14 @@ class ReservaService {
         usuarioId: uid,
         fecha: nuevaFecha,
         hora: nuevaHora,
-        estado: Reserva.estadoPendientePago,
+        estado: actual.estado,
         medioPago: actual.medioPago,
-        precio: canchaActual.precioPorHora,
+        // Se mantiene el precio que ya se pago, aunque la cancha haya
+        // cambiado su tarifa despues.
+        precio: actual.precio,
         horasLimiteCancelacion: canchaActual.horasLimiteCancelacion,
+        propietarioId: canchaActual.propietarioId,
+        pagoId: actual.pagoId,
       );
       transaccion.set(refNueva, {
         ...nueva.toMap(),
@@ -362,6 +429,14 @@ class ReservaService {
         'canceladaEn': FieldValue.serverTimestamp(),
         'actualizadaEn': FieldValue.serverTimestamp(),
       });
+      if (docPago != null && docPago.exists) {
+        transaccion.update(refPago!, {
+          'reservaId': refNueva.id,
+          'fecha': nuevaFecha,
+          'hora': nuevaHora,
+          'actualizadoEn': FieldValue.serverTimestamp(),
+        });
+      }
       return null;
     });
 

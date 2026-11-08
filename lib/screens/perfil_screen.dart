@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/canchas_admin_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/constantes.dart';
+import '../utils/validaciones.dart';
 
 // PerfilScreen: implementa HU-05 (Edicion de perfil).
 //
@@ -55,11 +58,32 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   Future<void> _cargarPerfil() async {
     final uid = _authService.usuarioActual?.uid;
-    if (uid == null) return;
+    if (uid == null) {
+      // Esta parte corre dentro de initState, antes del primer dibujo: basta
+      // con cambiar los valores (no hace falta setState).
+      _cargandoDatos = false;
+      _errorCarga = 'Tu sesión expiró. Cierra sesión y vuelve a entrar.';
+      return;
+    }
 
-    final usuario = await _firestoreService.obtenerPerfil(uid);
+    Usuario? leido;
+    try {
+      leido = await _firestoreService.obtenerPerfil(uid);
+    } catch (_) {
+      // Sin internet (y sin copia guardada) no se puede leer el perfil.
+      if (mounted) {
+        setState(() {
+          _cargandoDatos = false;
+          _errorCarga = 'No se pudo cargar tu perfil. Revisa tu conexión e inténtalo de nuevo.';
+        });
+      }
+      return;
+    }
     if (!mounted) return;
 
+    // Copia final: asi Dart sabe que no cambia y la deja usar dentro de
+    // setState una vez comprobado que no es null.
+    final usuario = leido;
     if (usuario == null) {
       setState(() {
         _cargandoDatos = false;
@@ -87,13 +111,15 @@ class _PerfilScreenState extends State<PerfilScreen> {
   Future<void> _guardarCambios() async {
     if (_usuario == null) return;
 
-    // Validacion del telefono: en Peru los celulares tienen 9 digitos.
-    // Si no cumple, se muestra el aviso y no se guarda nada en Firestore.
-    // El mensaje empieza con "No se pudo" para que se pinte en rojo (ver
-    // el Text de _mensaje mas abajo).
-    final telefono = _telefonoCtrl.text.trim();
-    if (!RegExp(r'^\d{9}$').hasMatch(telefono)) {
-      setState(() => _mensaje = 'No se pudo guardar: el teléfono debe tener 9 dígitos.');
+    // Se validan nombre, apellido y celular con las mismas reglas del
+    // registro (utils/validaciones.dart). Si algo no cumple, se muestra el
+    // aviso y no se guarda nada en Firestore. El mensaje empieza con
+    // "No se pudo" para que se pinte en rojo (ver el Text de _mensaje).
+    final error = validarNombre(_nombreCtrl.text, 'nombre') ??
+        validarNombre(_apellidoCtrl.text, 'apellido') ??
+        validarCelular(_telefonoCtrl.text);
+    if (error != null) {
+      setState(() => _mensaje = 'No se pudo guardar: $error.');
       return;
     }
 
@@ -101,6 +127,26 @@ class _PerfilScreenState extends State<PerfilScreen> {
       _guardando = true;
       _mensaje = null;
     });
+
+    // Un organizador con canchas no puede dejar de serlo: sus jugadores se
+    // quedarian sin quien valide los pagos (HU-12).
+    final usuario = _usuario!;
+    if (usuario.tipoCuenta == 'organizador' && _tipoCuenta != 'organizador' && !usuario.esAdmin) {
+      bool tieneCanchas;
+      try {
+        tieneCanchas = await CanchasAdminService().tieneCanchas(usuario.uid);
+      } catch (_) {
+        tieneCanchas = true;
+      }
+      if (!mounted) return;
+      if (tieneCanchas) {
+        setState(() {
+          _guardando = false;
+          _mensaje = 'No se pudo guardar: tienes canchas registradas, así que debes seguir como organizador.';
+        });
+        return;
+      }
+    }
 
     // Actualiza los campos del objeto Usuario en memoria con lo que el
     // usuario escribio en el formulario, y lo manda a Firestore.
@@ -114,9 +160,9 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
     try {
       await _firestoreService.actualizarPerfil(_usuario!);
-      setState(() => _mensaje = 'Perfil actualizado correctamente.');
+      if (mounted) setState(() => _mensaje = 'Perfil actualizado correctamente.');
     } catch (e) {
-      setState(() => _mensaje = 'No se pudo guardar: $e');
+      if (mounted) setState(() => _mensaje = 'No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.');
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
@@ -175,7 +221,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
                     TextField(
                       controller: _telefonoCtrl,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Teléfono'),
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+                      decoration: const InputDecoration(labelText: 'Celular (9 dígitos)'),
                     ),
                     const SizedBox(height: 12),
                     TextField(

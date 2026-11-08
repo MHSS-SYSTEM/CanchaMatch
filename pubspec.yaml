@@ -65,6 +65,9 @@ dependencies:
   # Guarda datos pequeños en el celular (usado en HU-02 para contar los
   # intentos fallidos de inicio de sesion y el bloqueo temporal).
   shared_preferences: ^2.3.2
+  # Elegir o tomar la foto del comprobante de pago (HU-10). Tambien la
+  # achica y comprime antes de guardarla.
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
