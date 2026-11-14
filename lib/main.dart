@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'theme/app_theme.dart';
 import 'services/auth_service.dart';
+import 'services/notificacion_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/inicio_screen.dart';
 
@@ -19,6 +20,12 @@ void main() async {
   // proyecto). A partir de aqui, FirebaseAuth.instance y
   // FirebaseFirestore.instance ya funcionan en cualquier parte de la app.
   await Firebase.initializeApp();
+
+  // Prepara las notificaciones del celular (HU-22). Si fallara, la app
+  // igual abre: solo no se mostrarian avisos.
+  try {
+    await NotificacionService().inicializar();
+  } catch (_) {}
 
   runApp(const CanchaMatchApp());
 }
