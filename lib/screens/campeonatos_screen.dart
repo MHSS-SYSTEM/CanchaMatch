@@ -6,11 +6,11 @@ import '../theme/app_theme.dart';
 import 'crear_campeonato_screen.dart';
 import 'detalle_campeonato_screen.dart';
 
-// CampeonatosScreen: lista de campeonatos (HU-13).
+// CampeonatosScreen: lista de campeonatos (HU-13 a HU-17).
 //
-// Todos los usuarios ven los campeonatos y su fixture. El organizador
-// tiene ademas el boton + para crear uno (HU-13) y el capitan inscribe a
-// su equipo desde el detalle (HU-14).
+// Todos los usuarios ven los campeonatos para seguir el fixture y la
+// tabla. El organizador tiene ademas el boton + para crear uno (HU-13) y
+// el capitan inscribe a su equipo desde el detalle (HU-14).
 class CampeonatosScreen extends StatefulWidget {
   final Usuario usuario;
 
