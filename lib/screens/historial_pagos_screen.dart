@@ -4,6 +4,7 @@ import '../services/pago_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formato.dart';
 import 'detalle_pago_screen.dart';
+import 'medios_pago_screen.dart';
 
 // HistorialPagosScreen: implementa HU-11 (Historial de pagos).
 //
@@ -26,6 +27,17 @@ class _HistorialPagosScreenState extends State<HistorialPagosScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Historial de pagos'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Medios de pago',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MediosPagoScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: StreamBuilder<List<Pago>>(
         stream: _pagos,
