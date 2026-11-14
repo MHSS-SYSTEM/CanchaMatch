@@ -2,11 +2,78 @@ import '../models/campeonato.dart';
 import '../models/partido.dart';
 import 'formato.dart';
 
-// Logica para armar el fixture de un campeonato (HU-13). Son funciones
-// "puras": no leen ni escriben
+// Logica para armar el fixture de un campeonato (HU-13) y calcular la
+// tabla de posiciones (HU-16). Son funciones "puras": no leen ni escriben
 // en Firestore, solo reciben datos y devuelven el resultado. Asi se pueden
 // probar y explicar por separado; CampeonatoService es quien guarda lo
 // que se genera aqui.
+
+// ---------------------------------------------------------------------
+// HU-16: Tabla de posiciones
+// ---------------------------------------------------------------------
+
+// FilaTabla: una fila de la tabla de posiciones.
+class FilaTabla {
+  final String equipoId;
+  final String nombre;
+  int jugados = 0;
+  int ganados = 0;
+  int empatados = 0;
+  int perdidos = 0;
+  int golesFavor = 0;
+  int golesContra = 0;
+
+  FilaTabla(this.equipoId, this.nombre);
+
+  int get diferencia => golesFavor - golesContra;
+
+  // 3 puntos por partido ganado y 1 por empatado.
+  int get puntos => ganados * 3 + empatados;
+}
+
+// calcularTabla: recorre los partidos ya jugados y suma los puntos de
+// cada equipo. Se ordena por puntos, luego diferencia de goles, luego
+// goles a favor y, si siguen empatados, por nombre.
+List<FilaTabla> calcularTabla(List<String> equiposIds, Map<String, String> nombres, Iterable<Partido> partidos) {
+  final filas = {for (final id in equiposIds) id: FilaTabla(id, nombres[id] ?? 'Equipo')};
+
+  for (final p in partidos) {
+    if (!p.jugado || p.pasaDirecto) continue;
+    final local = filas[p.localId];
+    final visita = filas[p.visitaId];
+    if (local == null || visita == null) continue;
+    final gl = p.golesLocal ?? 0;
+    final gv = p.golesVisita ?? 0;
+
+    local
+      ..jugados += 1
+      ..golesFavor += gl
+      ..golesContra += gv;
+    visita
+      ..jugados += 1
+      ..golesFavor += gv
+      ..golesContra += gl;
+
+    if (gl > gv) {
+      local.ganados += 1;
+      visita.perdidos += 1;
+    } else if (gl < gv) {
+      visita.ganados += 1;
+      local.perdidos += 1;
+    } else {
+      local.empatados += 1;
+      visita.empatados += 1;
+    }
+  }
+
+  return filas.values.toList()
+    ..sort((a, b) {
+      if (a.puntos != b.puntos) return b.puntos.compareTo(a.puntos);
+      if (a.diferencia != b.diferencia) return b.diferencia.compareTo(a.diferencia);
+      if (a.golesFavor != b.golesFavor) return b.golesFavor.compareTo(a.golesFavor);
+      return a.nombre.compareTo(b.nombre);
+    });
+}
 
 // ---------------------------------------------------------------------
 // HU-13: Generar el fixture
@@ -305,5 +372,62 @@ class GeneradorFixture {
       grupos[i % cantidad].add(equipos[i]);
     }
     return grupos;
+  }
+
+  // siguientePaso: se llama despues de registrar un resultado. Si la
+  // ronda (o la fase) actual ya se jugo completa, devuelve lo que sigue:
+  //  - partidos nuevos (siguiente ronda de la eliminatoria, o la
+  //    eliminatoria despues de la fase de grupos), o
+  //  - el campeon, si ya termino todo.
+  // Si todavia faltan partidos por jugar, devuelve null.
+  ({List<Partido> nuevos, String fase, String? campeonId})? siguientePaso(List<Partido> partidos) {
+    if (partidos.isEmpty || partidos.any((p) => !p.jugado)) return null;
+    final c = campeonato;
+    final ultimaRonda = partidos.map((p) => p.ronda).reduce((a, b) => a > b ? a : b);
+
+    switch (c.fase) {
+      case Partido.faseLiga:
+        final tabla = calcularTabla(c.equiposIds, c.equiposNombres, partidos);
+        return (nuevos: <Partido>[], fase: c.fase, campeonId: tabla.first.equipoId);
+
+      case Partido.faseGrupos:
+        // Pasan los 2 primeros de cada grupo. Se cruzan: 1º del A contra
+        // 2º del B y 1º del B contra 2º del A (y asi con C y D).
+        final letras = partidos.map((p) => p.grupo).toSet().toList()..sort();
+        final primeros = <List<String>>[];
+        for (final letra in letras) {
+          final delGrupo = partidos.where((p) => p.grupo == letra).toList();
+          final ids = {for (final p in delGrupo) ...[p.localId, p.visitaId]}.toList();
+          final tabla = calcularTabla(ids, c.equiposNombres, delGrupo);
+          primeros.add([for (final f in tabla.take(2)) f.equipoId]);
+        }
+        final clasificados = <String>[];
+        for (var g = 0; g < primeros.length; g += 2) {
+          if (g + 1 < primeros.length) {
+            clasificados.addAll([primeros[g][0], primeros[g + 1][1], primeros[g + 1][0], primeros[g][1]]);
+          } else {
+            clasificados.addAll(primeros[g]);
+          }
+        }
+        return (
+          nuevos: _rondaEliminatoria(primeraRondaEliminatoria(clasificados), ultimaRonda + 1),
+          fase: Partido.faseEliminatoria,
+          campeonId: null,
+        );
+
+      default:
+        final ronda = partidos.where((p) => p.fase == Partido.faseEliminatoria && p.ronda == ultimaRonda).toList()
+          ..sort((a, b) => a.orden.compareTo(b.orden));
+        final ganadores = [for (final p in ronda) p.ganadorId];
+        if (ganadores.length == 1) {
+          return (nuevos: <Partido>[], fase: Partido.faseEliminatoria, campeonId: ganadores.first);
+        }
+        final pares = [for (var i = 0; i + 1 < ganadores.length; i += 2) (ganadores[i], ganadores[i + 1])];
+        return (
+          nuevos: _rondaEliminatoria(pares, ultimaRonda + 1),
+          fase: Partido.faseEliminatoria,
+          campeonId: null,
+        );
+    }
   }
 }

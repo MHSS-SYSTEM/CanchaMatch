@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/notificacion_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'perfil_screen.dart';
@@ -20,7 +21,7 @@ import 'mi_equipo_screen.dart';
 // Al abrirse lee el perfil del usuario para saber su rol (HU-04) y mostrar
 // las opciones que le corresponden:
 //  - todos: perfil, buscar canchas, mis reservas, historial de pagos y
-//    campeonatos,
+//    campeonatos (fixture y tabla),
 //  - capitan de equipo: ademas "Mi equipo" (HU-14),
 //  - organizador (dueño de complejo): "Mis canchas", donde crea y edita
 //    sus propias canchas (HU-21), y "Validar pagos" de esas canchas
@@ -53,7 +54,11 @@ class _InicioScreenState extends State<InicioScreen> {
     if (uid == null) return;
     try {
       final usuario = await FirestoreService().obtenerPerfil(uid);
-      if (mounted && usuario != null) setState(() => _usuario = usuario);
+      if (mounted && usuario != null) {
+        setState(() => _usuario = usuario);
+        // HU-22: empieza a escuchar sus reservas, pagos y campeonatos.
+        NotificacionService().activar(usuario);
+      }
     } catch (_) {
       // Sin perfil no se puede saber el rol; se deja el menu de jugador.
     }
@@ -129,12 +134,13 @@ class _InicioScreenState extends State<InicioScreen> {
             subtitulo: 'Tus pagos y su estado',
             onTap: () => _ir(const HistorialPagosScreen()),
           ),
+          const SizedBox(height: 16),
           if (_usuario != null) ...[
             const SizedBox(height: 16),
             _BotonMenu(
               icono: Icons.emoji_events,
               titulo: 'Campeonatos',
-              subtitulo: _esOrganizador ? 'Crea campeonatos y genera el fixture' : 'Campeonatos y su fixture',
+              subtitulo: _esOrganizador ? 'Crea campeonatos y registra resultados' : 'Fixture, tabla y próximos partidos',
               onTap: () => _ir(CampeonatosScreen(usuario: _usuario!)),
             ),
           ],

@@ -3,14 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/usuario.dart';
+import 'notificacion_service.dart';
 
 // AuthService: agrupa todo lo relacionado a crear cuenta, iniciar sesion
 // y el codigo OTP de verificacion (HU-01).
 //
-// IMPORTANTE sobre el OTP: en esta etapa el codigo OTP es SIMULADO, no
-// se envia por SMS ni correo real. Por eso aqui el codigo se genera en el
-// propio celular (con Random) y se muestra en pantalla al usuario en vez
-// de enviarse de verdad. Es solo para demostrar el flujo de verificacion.
+// Sobre el OTP: el codigo de 6 digitos se genera en el celular y se envia
+// de verdad al correo del usuario con CorreoService (EmailJS). No se
+// guarda en Firestore ni se muestra en pantalla: solo lo conoce quien
+// recibe el correo.
 //
 // AuthService es un singleton (siempre devuelve la misma instancia,
 // aunque se escriba "AuthService()" en varias pantallas distintas). Esto
@@ -38,15 +39,13 @@ class AuthService {
   // mandar a la pantalla de login o directo a la app.
   User? get usuarioActual => _auth.currentUser;
 
-  // Genera un codigo OTP simulado de 6 digitos (ej: "483920").
-  // Se llama justo despues de crear la cuenta en registrarUsuario().
+  // Genera un codigo OTP de 6 digitos (ej: "483920"). Lo usa la pantalla
+  // de verificacion cada vez que envia (o reenvia) el correo.
   //
-  // El codigo no se guarda como campo de la clase: se retorna aqui, la
-  // pantalla de registro lo pasa a la pantalla de verificacion, y
-  // verificarOtp() lo recibe como parametro para compararlo. Asi no
-  // importa si cada pantalla tiene su propia instancia del service.
-  String _generarOtpSimulado() {
-    final random = Random();
+  // Random.secure() usa el generador seguro del sistema, asi el codigo no
+  // se puede adivinar a partir de codigos anteriores.
+  String generarCodigoOtp() {
+    final random = Random.secure();
     // 100000-999999 asegura siempre 6 digitos (nunca empieza en 0).
     final codigo = 100000 + random.nextInt(900000);
     return codigo.toString();
@@ -57,8 +56,7 @@ class AuthService {
   //  1. Crea la cuenta en Firebase Authentication con email y contraseña.
   //  2. Crea el documento del usuario en Firestore (coleccion "usuarios")
   //     con verificado=false.
-  //  3. Genera el OTP simulado y lo retorna para que la pantalla lo
-  //     muestre (por ejemplo, en un SnackBar o un texto en pantalla).
+  // Despues, la pantalla de verificacion envia el codigo al correo.
   //
   // Si el paso 2 falla (por ejemplo, se corta la conexion justo despues
   // de crear la cuenta), se borra la cuenta de Firebase Auth que se
@@ -66,9 +64,9 @@ class AuthService {
   // Authentication pero sin perfil en Firestore, y el usuario nunca
   // podria volver a registrarse con ese mismo correo.
   //
-  // Retorna un mapa con el uid creado y el otp generado, para que la
-  // pantalla de registro pueda navegar a la pantalla de verificacion.
-  Future<Map<String, String>> registrarUsuario({
+  // Retorna el uid creado, para que la pantalla de registro pueda navegar
+  // a la pantalla de verificacion.
+  Future<String> registrarUsuario({
     required String nombre,
     required String apellido,
     required String email,
@@ -109,10 +107,7 @@ class AuthService {
       rethrow;
     }
 
-    // Paso 3: generar el OTP simulado (no se envia por SMS/correo real).
-    final otp = _generarOtpSimulado();
-
-    return {'uid': uid, 'otp': otp};
+    return uid;
   }
 
   // verificarOtp: compara el codigo que el usuario escribio en pantalla
@@ -136,10 +131,6 @@ class AuthService {
     final doc = await _db.collection('usuarios').doc(uid).get();
     return doc.exists && doc.data()?['verificado'] == true;
   }
-
-  // nuevoOtpSimulado: genera otro codigo para quien no alcanzo a
-  // verificar su cuenta cuando se registro.
-  String nuevoOtpSimulado() => _generarOtpSimulado();
 
   // iniciarSesion: login normal con email y contraseña (Firebase Auth ya
   // trae toda la logica de validar credenciales, no hay que programarla).
@@ -219,6 +210,8 @@ class AuthService {
   // Si entro con Google, tambien se cierra alli, asi la proxima vez puede
   // elegir otra cuenta.
   Future<void> cerrarSesion() async {
+    // Deja de escuchar los avisos de este usuario (HU-22).
+    await NotificacionService().desactivar();
     try {
       await _google.signOut();
     } catch (_) {

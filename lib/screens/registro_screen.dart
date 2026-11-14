@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/validaciones.dart';
 import 'verificar_otp_screen.dart';
 
 // RegistroScreen: implementa HU-01 (Registro de usuario).
 //
 // Es un formulario con nombre, apellido, email, telefono y contraseña.
-// Al enviarlo, crea la cuenta en Firebase y genera un OTP SIMULADO
-// (no se manda SMS/correo real), luego navega a VerificarOtpScreen para
-// que el usuario lo ingrese y complete el registro.
+// Al enviarlo, crea la cuenta en Firebase y navega a VerificarOtpScreen,
+// que envia un codigo OTP al correo del usuario para completar el
+// registro.
 //
 // HU-04: en el mismo formulario elige su rol (jugador, capitan de equipo u
 // organizador de complejo).
@@ -66,7 +68,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
     });
 
     try {
-      final resultado = await _authService.registrarUsuario(
+      final uid = await _authService.registrarUsuario(
         nombre: _nombreCtrl.text.trim(),
         apellido: _apellidoCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
@@ -77,13 +79,14 @@ class _RegistroScreenState extends State<RegistroScreen> {
 
       if (!mounted) return;
 
-      // Navega a la pantalla de verificacion, pasando el uid recien
-      // creado y el OTP simulado que genero AuthService.
+      // Navega a la pantalla de verificacion, que envia el codigo al
+      // correo que el usuario acaba de registrar.
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => VerificarOtpScreen(
-            uid: resultado['uid']!,
-            otpSimulado: resultado['otp']!,
+            uid: uid,
+            email: _emailCtrl.text.trim(),
+            nombre: _nombreCtrl.text.trim(),
           ),
         ),
       );
@@ -91,7 +94,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
       // Traduce el error de Firebase a un mensaje en español que el
       // usuario entienda (en vez de mostrar el texto tecnico crudo de
       // la excepcion).
-      setState(() => _errorMensaje = _authService.mensajeError(e));
+      if (mounted) setState(() => _errorMensaje = _authService.mensajeError(e));
     } finally {
       if (mounted) setState(() => _cargando = false);
     }
@@ -121,42 +124,45 @@ class _RegistroScreenState extends State<RegistroScreen> {
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _nombreCtrl,
+                  textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(labelText: 'Nombre'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
+                  validator: (v) => validarNombre(v, 'nombre'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _apellidoCtrl,
+                  textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(labelText: 'Apellido'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Ingresa tu apellido' : null,
+                  validator: (v) => validarNombre(v, 'apellido'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(labelText: 'Correo electrónico'),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Ingresa tu correo';
-                    if (!v.contains('@')) return 'Correo no válido';
-                    return null;
-                  },
+                  validator: validarEmail,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _telefonoCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Teléfono'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Ingresa tu teléfono' : null,
+                  // Solo deja escribir numeros y como maximo 9.
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+                  decoration: const InputDecoration(labelText: 'Celular (9 dígitos)', hintText: '987654321'),
+                  validator: validarCelular,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _passwordCtrl,
                   obscureText: true,
                   decoration: const InputDecoration(labelText: 'Contraseña'),
-                  validator: (v) {
-                    if (v == null || v.length < 6) return 'Mínimo 6 caracteres';
-                    return null;
-                  },
+                  validator: validarPassword,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Repite tu contraseña'),
+                  validator: (v) => v != _passwordCtrl.text ? 'Las contraseñas no coinciden' : null,
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(

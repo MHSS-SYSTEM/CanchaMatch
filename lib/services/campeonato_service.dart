@@ -22,6 +22,8 @@ class CampeonatoException implements Exception {
 //
 //  - HU-13: el organizador crea el campeonato y genera el fixture.
 //  - HU-14: el capitan arma su equipo y lo inscribe.
+//  - HU-15: el organizador registra el resultado de cada partido.
+//  - HU-16 y HU-17: tabla y fixture en vivo (los Streams de abajo).
 class CampeonatoService {
   static final CampeonatoService _instancia = CampeonatoService._interno();
 
@@ -56,7 +58,7 @@ class CampeonatoService {
   }
 
   // ---------------------------------------------------------------------
-  // Datos en vivo
+  // HU-16 y HU-17: datos en vivo
   // ---------------------------------------------------------------------
 
   // Todos los campeonatos, los mas proximos primero. Son Streams: si el
@@ -286,6 +288,97 @@ class CampeonatoService {
       transaccion.update(refCampeonato, {
         'equiposIds': [...campeonato.equiposIds, uid],
         'equiposNombres.$uid': equipo.nombre,
+      });
+      return null;
+    });
+
+    if (error != null) throw CampeonatoException(error);
+  }
+
+  // ---------------------------------------------------------------------
+  // HU-15: Registrar resultados
+  // ---------------------------------------------------------------------
+
+  // sePuedeEditar: el resultado de un partido se puede corregir mientras
+  // no se haya generado la ronda que depende de el.
+  static bool sePuedeEditar(Campeonato campeonato, Partido partido, List<Partido> todos) {
+    if (campeonato.estado != Campeonato.estadoEnCurso || partido.pasaDirecto) return false;
+    return !todos.any((p) => p.fase == Partido.faseEliminatoria && p.ronda > partido.ronda);
+  }
+
+  // registrarResultado: guarda el marcador y, si con eso se completo la
+  // ronda o la fase, genera lo que sigue (siguiente ronda, eliminatoria
+  // despues de los grupos, o el campeon).
+  //
+  // ganadorPenales: en eliminatoria, si empatan, quien gano en penales.
+  Future<void> registrarResultado({
+    required Campeonato campeonato,
+    required Partido partido,
+    required int golesLocal,
+    required int golesVisita,
+    String? ganadorPenales,
+  }) async {
+    final eliminatoria = partido.fase == Partido.faseEliminatoria;
+    String ganador = '';
+    if (golesLocal > golesVisita) ganador = partido.localId;
+    if (golesVisita > golesLocal) ganador = partido.visitaId;
+    if (ganador.isEmpty && eliminatoria) {
+      if (ganadorPenales == null) throw CampeonatoException('En eliminatoria elige quién ganó en penales.');
+      ganador = ganadorPenales;
+    }
+
+    final refPartidos = _partidos(campeonato.id);
+    final refCampeonato = _campeonatos.doc(campeonato.id);
+
+    // Va en una transaccion que lee el campeonato y todos sus partidos. Si
+    // dos resultados se guardan casi a la vez, Firestore repite el segundo
+    // con los datos nuevos: asi la siguiente ronda se genera una sola vez
+    // y nunca se pierde.
+    final error = await _db.runTransaction<String?>((transaccion) async {
+      final docCampeonato = await transaccion.get(refCampeonato);
+      if (!docCampeonato.exists) return 'El campeonato ya no existe.';
+      final actual = Campeonato.fromMap(docCampeonato.id, docCampeonato.data()!);
+
+      // Una transaccion de la app no puede hacer consultas, asi que primero
+      // se piden los ids de los partidos y luego se lee cada uno dentro de
+      // la transaccion.
+      final ids = (await refPartidos.get()).docs.map((d) => d.id).toList();
+      final todos = <Partido>[];
+      for (final id in ids) {
+        final doc = await transaccion.get(refPartidos.doc(id));
+        if (!doc.exists) continue;
+        todos.add(doc.id == partido.id
+            ? Partido.fromMap(doc.id, {
+                ...doc.data()!,
+                'jugado': true,
+                'golesLocal': golesLocal,
+                'golesVisita': golesVisita,
+                'ganadorId': ganador,
+              })
+            : Partido.fromMap(doc.id, doc.data()!));
+      }
+      if (!sePuedeEditar(actual, partido, todos)) return 'Este resultado ya no se puede cambiar.';
+
+      transaccion.update(refPartidos.doc(partido.id), {
+        'jugado': true,
+        'golesLocal': golesLocal,
+        'golesVisita': golesVisita,
+        'ganadorId': ganador,
+        'registradoEn': FieldValue.serverTimestamp(),
+      });
+
+      final paso = GeneradorFixture(actual).siguientePaso(todos);
+      for (final nuevo in paso?.nuevos ?? <Partido>[]) {
+        transaccion.set(refPartidos.doc(), nuevo.toMap());
+      }
+      // ultimoResultado: lo escuchan los celulares de los capitanes
+      // inscritos para avisarles el resultado (HU-22).
+      transaccion.update(refCampeonato, {
+        'ultimoResultado': '${partido.localNombre} $golesLocal - $golesVisita ${partido.visitaNombre}',
+        'ultimoResultadoEn': FieldValue.serverTimestamp(),
+        if (paso != null) 'fase': paso.fase,
+        if (paso?.campeonId != null) 'campeonId': paso!.campeonId,
+        if (paso?.campeonId != null) 'estado': Campeonato.estadoFinalizado,
       });
       return null;
     });

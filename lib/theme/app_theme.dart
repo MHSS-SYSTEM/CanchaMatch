@@ -19,7 +19,7 @@ class AppColors {
 // AppTheme: arma el ThemeData que usa MaterialApp, siguiendo la guia de
 // estilo del diseno de Stitch: titulos con la fuente "Anybody" (ancha y
 // en mayusculas), texto normal con "Hanken Grotesk", y "JetBrains Mono"
-// para datos tipo codigo (como el OTP simulado de HU-01).
+// para datos tipo codigo (como la cuenta regresiva de la reserva).
 class AppTheme {
   // Estilo de titulo grande (pantallas de login/registro, encabezados).
   static TextStyle get tituloGrande => GoogleFonts.anybody(
@@ -28,7 +28,7 @@ class AppTheme {
         letterSpacing: 0.5,
       );
 
-  // Estilo para mostrar codigos (ej. el OTP simulado de HU-01), en
+  // Estilo para mostrar codigos y numeros (ej. la cuenta regresiva), en
   // monoespaciado para que se lean claros los digitos.
   static TextStyle get textoCodigo => GoogleFonts.jetBrainsMono(
         color: AppColors.verdeLima,

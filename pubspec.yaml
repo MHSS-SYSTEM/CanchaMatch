@@ -68,6 +68,13 @@ dependencies:
   # Elegir o tomar la foto del comprobante de pago (HU-10). Tambien la
   # achica y comprime antes de guardarla.
   image_picker: ^1.1.2
+  # Notificaciones del celular (HU-22): avisos de reserva, pago,
+  # resultados y recordatorios programados.
+  flutter_local_notifications: ^17.2.4
+  # Zonas horarias para programar los recordatorios a la hora de Peru.
+  timezone: ^0.9.4
+  # Llamadas HTTP: envia el codigo OTP del registro por correo (EmailJS).
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:

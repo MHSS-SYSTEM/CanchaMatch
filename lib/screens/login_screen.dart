@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/bloqueo_login_service.dart';
+import '../utils/validaciones.dart';
 import '../theme/app_theme.dart';
 import 'registro_screen.dart';
 import 'inicio_screen.dart';
@@ -148,6 +149,12 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _errorMensaje = 'Ingresa tu correo y tu contraseña.');
       return;
     }
+    // Un correo mal escrito no cuenta como intento fallido.
+    final errorEmail = validarEmail(email);
+    if (errorEmail != null) {
+      setState(() => _errorMensaje = errorEmail);
+      return;
+    }
 
     // Antes de ir a Firebase, se revisa si este correo esta bloqueado.
     final restante = await _bloqueoService.tiempoRestanteBloqueo(email);
@@ -174,9 +181,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (!verificado) {
-        final otp = _authService.nuevoOtpSimulado();
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => VerificarOtpScreen(uid: uid, otpSimulado: otp)),
+          MaterialPageRoute(builder: (_) => VerificarOtpScreen(uid: uid, email: email, nombre: '')),
         );
         return;
       }

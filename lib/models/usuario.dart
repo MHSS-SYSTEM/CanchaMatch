@@ -27,7 +27,8 @@ class Usuario {
   String? distrito; // distrito de Cajamarca donde vive/juega
 
   // verificado: se pone en true cuando el usuario ingresa correctamente
-  // el codigo OTP simulado (ver AuthService). Antes de eso queda en false.
+  // el codigo OTP que le llego al correo (ver AuthService). Antes de eso
+  // queda en false.
   bool verificado;
 
   // rol: "jugador" (por defecto) o "admin". El admin es quien gestiona

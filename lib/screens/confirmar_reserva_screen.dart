@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/cancha.dart';
 import '../models/pago.dart';
 import '../models/reserva.dart';
+import '../services/notificacion_service.dart';
 import '../services/reserva_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formato.dart';
@@ -217,6 +218,12 @@ class _ConfirmarReservaScreenState extends State<ConfirmarReservaScreen> {
       await _reservaService.confirmarReserva(widget.reserva.id, datos);
       _confirmada = true;
       _timer?.cancel();
+      // HU-22: confirmacion de la reserva.
+      NotificacionService().mostrar(
+        'Reserva registrada',
+        '${widget.cancha.nombre} · ${fechaTexto(widget.reserva.inicio)} ${rangoHora(widget.reserva.hora)}. '
+            'Tu pago está en revisión.',
+      );
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
