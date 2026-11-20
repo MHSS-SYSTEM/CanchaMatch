@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/campeonato.dart';
@@ -21,6 +22,10 @@ import '../utils/formato.dart';
 //  - resultados del campeonato para los equipos inscritos,
 //  - al organizador, cuando llega un pago nuevo por revisar.
 //
+// El usuario puede desactivar cada categoria (reservas, pagos o
+// campeonatos) desde su perfil. La eleccion se guarda en el celular con
+// SharedPreferences, por cada usuario, igual que el bloqueo de HU-02.
+//
 // Como el proyecto usa el plan gratuito de Firebase (sin servidor ni
 // Cloud Functions), las notificaciones las genera la propia app al
 // escuchar los cambios de Firestore en tiempo real.
@@ -30,6 +35,23 @@ class NotificacionService {
   factory NotificacionService() => _instancia;
 
   NotificacionService._interno();
+
+  // Categorias de notificacion que se pueden desactivar desde el perfil.
+  static const categoriaReservas = 'reservas';
+  static const categoriaPagos = 'pagos';
+  static const categoriaCampeonatos = 'campeonatos';
+
+  // Nombre que se muestra en el perfil para cada categoria.
+  static const categorias = {
+    categoriaReservas: 'Reservas y recordatorios',
+    categoriaPagos: 'Pagos',
+    categoriaCampeonatos: 'Campeonatos y partidos',
+  };
+
+  // Categorias activas del usuario que inicio sesion. Si una no aparece,
+  // se toma como activa.
+  final Map<String, bool> _activas = {};
+  Usuario? _usuarioActivo;
 
   final _plugin = FlutterLocalNotificationsPlugin();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -67,10 +89,37 @@ class NotificacionService {
     );
   }
 
+  static String _clavePreferencia(String uid, String categoria) => 'notificaciones_${uid}_$categoria';
+
+  // preferencias: lee del celular que categorias tiene activas el usuario.
+  // Por defecto todas estan activas.
+  Future<Map<String, bool>> preferencias(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      for (final categoria in categorias.keys) categoria: prefs.getBool(_clavePreferencia(uid, categoria)) ?? true,
+    };
+  }
+
+  // cambiarPreferencia: guarda la eleccion del perfil. Si el usuario ya
+  // tiene las escuchas activas, se vuelven a activar para que deje de
+  // recibir (o vuelva a recibir) esa categoria, incluidos los recordatorios.
+  Future<void> cambiarPreferencia(String uid, String categoria, bool activa) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_clavePreferencia(uid, categoria), activa);
+    final usuario = _usuarioActivo;
+    if (usuario != null && usuario.uid == uid) {
+      _claveActiva = null;
+      await activar(usuario);
+    }
+  }
+
+  bool _permitida(String categoria) => _activas[categoria] ?? true;
+
   // Id numerico estable a partir de un texto (el plugin pide un int).
   static int _id(String clave) => clave.hashCode & 0x7fffffff;
 
-  Future<void> mostrar(String titulo, String texto) async {
+  Future<void> mostrar(String titulo, String texto, {String categoria = categoriaReservas}) async {
+    if (!_permitida(categoria)) return;
     try {
       await _plugin.show(_id('$titulo$texto${DateTime.now()}'), titulo, texto, _detalles);
     } catch (_) {
@@ -79,8 +128,8 @@ class NotificacionService {
   }
 
   // _programar: notificacion para una fecha futura (recordatorios).
-  Future<void> _programar(int id, DateTime cuando, String titulo, String texto) async {
-    if (!cuando.isAfter(DateTime.now())) return;
+  Future<void> _programar(int id, DateTime cuando, String titulo, String texto, String categoria) async {
+    if (!_permitida(categoria) || !cuando.isAfter(DateTime.now())) return;
     try {
       await _plugin.zonedSchedule(
         id,
@@ -106,6 +155,10 @@ class NotificacionService {
     if (_claveActiva == clave) return;
     await desactivar();
     _claveActiva = clave;
+    _usuarioActivo = usuario;
+    _activas
+      ..clear()
+      ..addAll(await preferencias(usuario.uid));
 
     try {
       await _plugin
@@ -133,6 +186,7 @@ class NotificacionService {
     _recordatoriosReservas.clear();
     _recordatoriosPartidos.clear();
     _claveActiva = null;
+    _usuarioActivo = null;
     try {
       await _plugin.cancelAll();
     } catch (_) {
@@ -154,11 +208,16 @@ class NotificacionService {
         if (anterior != Pago.estadoEnRevision || pago.estado == Pago.estadoEnRevision) continue;
         final cuando = '${fechaTexto(fechaDesdeClave(pago.fecha))} ${horaTexto(pago.hora)}';
         if (pago.estado == Pago.estadoAprobado) {
-          mostrar('¡Pago aprobado!', 'Tu reserva en ${pago.canchaNombre} el $cuando quedó confirmada.');
+          mostrar(
+            '¡Pago aprobado!',
+            'Tu reserva en ${pago.canchaNombre} el $cuando quedó confirmada.',
+            categoria: categoriaPagos,
+          );
         } else if (pago.estado == Pago.estadoRechazado) {
           mostrar(
             'Pago rechazado',
             'Tu pago para ${pago.canchaNombre} el $cuando fue rechazado: ${pago.motivoRechazo ?? ''}',
+            categoria: categoriaPagos,
           );
         }
       }
@@ -185,6 +244,7 @@ class NotificacionService {
           reserva.inicio.subtract(const Duration(hours: 1)),
           'Tu reserva es en 1 hora',
           '${reserva.canchaNombre} · ${rangoHora(reserva.hora)}',
+          categoriaReservas,
         );
       }
       for (final id in _recordatoriosReservas.difference(vigentes)) {
@@ -211,6 +271,7 @@ class NotificacionService {
           mostrar(
             'Nuevo pago por revisar',
             '${pago.usuarioNombre} · ${pago.canchaNombre} · S/ ${pago.monto.toStringAsFixed(2)} (${pago.medio})',
+            categoria: categoriaPagos,
           );
         }
       }
@@ -232,7 +293,11 @@ class NotificacionService {
         final resultado = (doc.data()['ultimoResultado'] ?? '').toString();
         final anterior = ultimos[c.id];
         if (anterior != null && resultado.isNotEmpty && resultado != anterior) {
-          mostrar(c.nombre, c.campeonNombre == null ? resultado : '$resultado · ¡Campeón: ${c.campeonNombre}!');
+          mostrar(
+            c.nombre,
+            c.campeonNombre == null ? resultado : '$resultado · ¡Campeón: ${c.campeonNombre}!',
+            categoria: categoriaCampeonatos,
+          );
         }
         ultimos[c.id] = resultado;
 
@@ -263,6 +328,7 @@ class NotificacionService {
         partido.inicio.subtract(const Duration(hours: 1)),
         'Tu partido es en 1 hora',
         '${partido.localNombre} vs ${partido.visitaNombre} · ${c.canchaNombre} · ${horaTexto(partido.hora)}',
+        categoriaCampeonatos,
       );
     }
   }

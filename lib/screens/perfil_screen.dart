@@ -4,6 +4,7 @@ import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/canchas_admin_service.dart';
 import '../services/firestore_service.dart';
+import '../services/notificacion_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/constantes.dart';
 import '../utils/validaciones.dart';
@@ -13,6 +14,7 @@ import '../utils/validaciones.dart';
 // Al abrirse, carga los datos actuales del usuario desde Firestore
 // (obtenerPerfil) y los muestra en un formulario. Al presionar "Guardar
 // cambios", actualiza el documento en Firestore (actualizarPerfil).
+// Tambien permite desactivar categorias de notificaciones (HU-22).
 class PerfilScreen extends StatefulWidget {
   const PerfilScreen({super.key});
 
@@ -46,6 +48,10 @@ class _PerfilScreenState extends State<PerfilScreen> {
   // ejemplo, si el documento nunca se creo). Sin esto, la pantalla se
   // quedaria mostrando el circulo de carga para siempre sin explicar nada.
   String? _errorCarga;
+
+  // HU-22: categorias de notificacion activas (reservas, pagos y
+  // campeonatos). Se cargan del celular junto con el perfil.
+  Map<String, bool> _notificaciones = {};
 
   @override
   void initState() {
@@ -92,8 +98,12 @@ class _PerfilScreenState extends State<PerfilScreen> {
       return;
     }
 
+    final notificaciones = await NotificacionService().preferencias(usuario.uid);
+    if (!mounted) return;
+
     setState(() {
       _usuario = usuario;
+      _notificaciones = notificaciones;
       _nombreCtrl.text = usuario.nombre;
       _apellidoCtrl.text = usuario.apellido;
       _telefonoCtrl.text = usuario.telefono;
@@ -166,6 +176,15 @@ class _PerfilScreenState extends State<PerfilScreen> {
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
+  }
+
+  // HU-22: activa o desactiva una categoria de notificaciones. Se guarda
+  // al instante, sin necesidad de pulsar "Guardar cambios".
+  Future<void> _cambiarNotificacion(String categoria, bool activa) async {
+    final usuario = _usuario;
+    if (usuario == null) return;
+    setState(() => _notificaciones[categoria] = activa);
+    await NotificacionService().cambiarPreferencia(usuario.uid, categoria, activa);
   }
 
   @override
@@ -266,6 +285,20 @@ class _PerfilScreenState extends State<PerfilScreen> {
                           ),
                         ),
                     ],
+                    const SizedBox(height: 20),
+                    // HU-22: el usuario elige que notificaciones recibir.
+                    const Text(
+                      'Notificaciones',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    for (final categoria in NotificacionService.categorias.keys)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(NotificacionService.categorias[categoria]!),
+                        value: _notificaciones[categoria] ?? true,
+                        activeColor: AppColors.verdeLima,
+                        onChanged: (valor) => _cambiarNotificacion(categoria, valor),
+                      ),
                     const SizedBox(height: 20),
                     if (_mensaje != null)
                       Padding(
